@@ -11,4 +11,5 @@ struct info {
 };
 
 auto get_all_webcams() -> std::vector<info>;
+
 } // namespace webcam_info
