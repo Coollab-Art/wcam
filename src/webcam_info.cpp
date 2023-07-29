@@ -2,7 +2,7 @@
 #include <webcam_info/webcam_info.hpp>
 
 #if defined(_WIN32)
-// windows media fondation
+
 #include <mfapi.h>
 #include <mfidl.h>
 #include <mfreadwrite.h>
@@ -10,7 +10,7 @@
 #include <codecvt>
 #include <locale>
 
-std::string ConvertWCHARToString(const WCHAR* wstr)
+auto ConvertWCHARToString(const WCHAR* wstr) -> std::string
 {
     // Créer un codecvt_utf8 pour la conversion
     std::wstring_convert<std::codecvt_utf8_utf16<WCHAR>, WCHAR> converter;
@@ -60,6 +60,40 @@ auto webcam_info::get_all_webcams() -> std::vector<info>
             if (SUCCEEDED(hr))
             {
                 list_infos.back().name = ConvertWCHARToString(szFriendlyName);
+            }
+
+            // Now get the resolution
+            IMFMediaSource* pMediaSource = nullptr;
+            hr                           = ppDevices[i]->ActivateObject(IID_PPV_ARGS(&pMediaSource));
+            if (SUCCEEDED(hr))
+            {
+                // Créer le lecteur source pour la source de média
+                IMFSourceReader* pSourceReader = nullptr;
+                hr                             = MFCreateSourceReaderFromMediaSource(pMediaSource, pConfig, &pSourceReader);
+                if (SUCCEEDED(hr))
+                {
+                    // Obtenir le premier flux vidéo disponible
+                    IMFMediaType* pMediaType = nullptr;
+                    hr                       = pSourceReader->GetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, &pMediaType);
+                    if (SUCCEEDED(hr))
+                    {
+                        UINT32 width  = 0;
+                        UINT32 height = 0;
+                        hr            = MFGetAttributeSize(pMediaType, MF_MT_FRAME_SIZE, &width, &height);
+                        // hr = MFGetAttributeRatio(pConfig, MF_MT_PIXEL_ASPECT_RATIO, &width, &height);
+                        if (SUCCEEDED(hr))
+                        {
+                            list_infos.back().width  = width;
+                            list_infos.back().height = height;
+                        }
+
+                        pMediaType->Release();
+                    }
+
+                    pSourceReader->Release();
+                }
+
+                pMediaSource->Release();
             }
         }
     }

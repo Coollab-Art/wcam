@@ -17,6 +17,7 @@ auto main(int argc, char* argv[]) -> int
             for (auto& info : list_webcam_info)
             {
                 ImGui::Text("%s \n", info.name.c_str());
+                ImGui::Text("    width : %d / height : %d \n\n", info.width, info.height);
             }
 
             ImGui::End();
