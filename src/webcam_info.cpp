@@ -5,6 +5,21 @@
 #include <vector>
 #include <webcam_info/webcam_info.hpp>
 
+auto webcam_info::to_string(webcam_info::pixel_format format) -> std::string
+{
+    switch (format)
+    {
+    case webcam_info::pixel_format::yuyv:
+        return "yuyv";
+
+    case webcam_info::pixel_format::mjpeg:
+        return "mjpeg";
+
+    default:
+        return "unknown";
+    }
+}
+
 #if defined(_WIN32)
 
 #include <dshow.h>

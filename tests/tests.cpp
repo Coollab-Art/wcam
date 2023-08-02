@@ -18,7 +18,7 @@ auto main(int argc, char* argv[]) -> int
             {
                 ImGui::Text("%s \n", info.name.c_str());
                 ImGui::Text("    width : %d / height : %d \n", info.width, info.height);
-                ImGui::Text("         format :  %d \n\n", info.format);
+                ImGui::Text("         format :  %s \n\n", webcam_info::to_string(info.format).c_str());
             }
 
             ImGui::End();

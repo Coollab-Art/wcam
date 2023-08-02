@@ -8,6 +8,8 @@ enum class pixel_format { unknown,
                           yuyv,
                           mjpeg };
 
+auto to_string(webcam_info::pixel_format format) -> std::string;
+
 struct info {
     std::string  name{};
     int          width{};
