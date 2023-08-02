@@ -1,3 +1,7 @@
+#include <filesystem>
+#include <iostream>
+#include <string>
+#include <variant>
 #include <vector>
 #include <webcam_info/webcam_info.hpp>
 
@@ -160,6 +164,111 @@ auto webcam_info::get_all_webcams() -> std::vector<info>
             pEnum->Release();
         }
         CoUninitialize();
+    }
+    return list_webcam_info;
+}
+
+#endif
+
+#if defined(__linux__)
+
+#include <errno.h>
+#include <fcntl.h>
+#include <linux/videodev2.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
+#include <algorithm>
+#include <cstdio>
+
+auto webcam_info::get_all_webcams() -> std::vector<info>
+{
+    std::vector<info> list_webcam_info{};
+
+    std::string camera_path  = "/dev/video0";
+    int         video_device = open(camera_path.c_str(), O_RDONLY);
+    int         i            = 0;
+
+    auto go_to_next_webcam = [&]() {
+        close(video_device);
+        i += 1;
+        camera_path  = "/dev/video" + std::to_string(i);
+        video_device = open(camera_path.c_str(), O_RDONLY);
+    };
+
+    while (video_device != -1)
+    {
+        v4l2_capability cap{};
+
+        if (ioctl(video_device, VIDIOC_QUERYCAP, &cap) == -1)
+        {
+            std::cout << "Erreur lors de l'obtention des informations du périphérique";
+            go_to_next_webcam();
+            continue;
+        }
+
+        // Vérification si le périphérique est capable de capturer des flux vidéo
+        if (!(cap.capabilities & V4L2_CAP_VIDEO_CAPTURE))
+        {
+            std::cout << "Le périphérique n'est pas capable de capturer des flux vidéo\n";
+            go_to_next_webcam();
+            continue;
+        }
+
+        // Récupération du nom du périphérique
+        char deviceName[256];
+        strcpy(deviceName, (char*)cap.card);
+
+        int          width{};
+        int          height{};
+        pixel_format format{};
+
+        v4l2_fmtdesc formatDescription{};
+        formatDescription.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+
+        while (ioctl(video_device, VIDIOC_ENUM_FMT, &formatDescription) == 0)
+        {
+            printf("  - Format : %s\n", formatDescription.description);
+            // Récupérer les résolutions associées à chaque format
+            v4l2_frmsizeenum frameSize{};
+            frameSize.pixel_format = formatDescription.pixelformat;
+            while (ioctl(video_device, VIDIOC_ENUM_FRAMESIZES, &frameSize) == 0)
+            {
+                v4l2_frmivalenum frameInterval{};
+                frameInterval.pixel_format = formatDescription.pixelformat;
+                frameInterval.width        = frameSize.discrete.width;
+                frameInterval.height       = frameSize.discrete.height;
+
+                while (ioctl(video_device, VIDIOC_ENUM_FRAMEINTERVALS, &frameInterval) == 0)
+                {
+                    if (frameInterval.type == V4L2_FRMIVAL_TYPE_DISCRETE)
+                    {
+                        float fps = 1.0f * frameInterval.discrete.denominator / frameInterval.discrete.numerator;
+                        if (fps > 29. && frameSize.type == V4L2_FRMSIZE_TYPE_DISCRETE)
+                        {
+                            width  = std::max(width, static_cast<int>(frameSize.discrete.width));
+                            height = std::max(height, static_cast<int>(frameSize.discrete.height));
+                            std::string format_name(reinterpret_cast<char*>(formatDescription.description), 32);
+
+                            if (format_name.find("Motion-JPEG") != std::string::npos)
+                                format = pixel_format::mjpeg;
+
+                            else if (format_name.find("YUYV") != std::string::npos)
+                                format = pixel_format::yuyv;
+                            else
+                                format = pixel_format::unknown;
+                        }
+                    }
+                    frameInterval.index++;
+                }
+                frameSize.index++;
+            }
+
+            formatDescription.index++;
+        }
+
+        list_webcam_info.push_back(info{std::string(deviceName), width, height});
+        go_to_next_webcam();
     }
     return list_webcam_info;
 }
