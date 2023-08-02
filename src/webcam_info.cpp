@@ -185,25 +185,22 @@ auto webcam_info::get_all_webcams() -> std::vector<info>
 {
     std::vector<info> list_webcam_info{};
 
-    std::string camera_path  = "/dev/video0";
-    int         video_device = open(camera_path.c_str(), O_RDONLY);
-    int         i            = 0;
-
-    auto go_to_next_webcam = [&]() {
-        close(video_device);
-        i += 1;
-        camera_path  = "/dev/video" + std::to_string(i);
-        video_device = open(camera_path.c_str(), O_RDONLY);
-    };
-
-    while (video_device != -1)
+    std::vector<std::string> list_camera_path{};
+    std::string              camera_path = "/dev/video0";
+    for (const auto& entry : std::filesystem::directory_iterator("/dev"))
     {
+        if (entry.path().string().find("video") == std::string::npos)
+            continue;
+
+        int video_device = open(entry.path().c_str(), O_RDONLY);
+        if (video_device == -1)
+            continue;
+
         v4l2_capability cap{};
 
         if (ioctl(video_device, VIDIOC_QUERYCAP, &cap) == -1)
         {
             std::cout << "Erreur lors de l'obtention des informations du périphérique";
-            go_to_next_webcam();
             continue;
         }
 
@@ -211,7 +208,6 @@ auto webcam_info::get_all_webcams() -> std::vector<info>
         if (!(cap.capabilities & V4L2_CAP_VIDEO_CAPTURE))
         {
             std::cout << "Le périphérique n'est pas capable de capturer des flux vidéo\n";
-            go_to_next_webcam();
             continue;
         }
 
@@ -266,9 +262,9 @@ auto webcam_info::get_all_webcams() -> std::vector<info>
 
             formatDescription.index++;
         }
-
+        if (width <= 0 || height <= 0)
+            continue;
         list_webcam_info.push_back(info{std::string(deviceName), width, height});
-        go_to_next_webcam();
     }
     return list_webcam_info;
 }
