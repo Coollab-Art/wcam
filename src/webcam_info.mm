@@ -1,34 +1,23 @@
 #include <AVFoundation/AVFoundation.h>
 #include <string>
 #include <vector>
+#include <webcam_info/webcam_info.hpp>
+
 
 namespace webcam_info {
 
-enum class pixel_format { unknown, yuyv, mjpeg };
+// enum class pixel_format { unknown, yuyv, mjpeg };
 
-struct info {
-  info(const std::string &name, int width, int height,
-       pixel_format format = pixel_format::unknown)
-      : name(name), width(width), height(height), format(format){};
+// struct info {
+//   info(const std::string &name, int width, int height,
+//        pixel_format format = pixel_format::unknown)
+//       : name(name), width(width), height(height), format(format){};
 
-  std::string name{};
-  int width{};
-  int height{};
-  pixel_format format{pixel_format::unknown};
-};
-
-static auto to_string(webcam_info::pixel_format format) -> std::string {
-  switch (format) {
-  case webcam_info::pixel_format::yuyv:
-    return "yuyv";
-
-  case webcam_info::pixel_format::mjpeg:
-    return "mjpeg";
-
-  default:
-    return "unknown";
-  }
-}
+//   std::string name{};
+//   int width{};
+//   int height{};
+//   pixel_format format{pixel_format::unknown};
+// };
 
 auto get_all_webcams() -> std::vector<info> {
   std::vector<info> list_webcams_infos{};
