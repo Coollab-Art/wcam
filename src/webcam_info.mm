@@ -27,7 +27,7 @@ static auto to_string(webcam_info::pixel_format format) -> std::string {
 } // namespace webcam_info
 
 #include <CoreMedia/CMFormatDescription.h>
-#include <CoreMedia/CMVideoFormatDescription.h>
+// #include <CoreMedia/CMVideoFormatDescription.h>
 #include <CoreMediaIO/CMIOHardware.h>
 
 auto get_webcam_info_from_device_id(CMIOObjectID deviceID)
