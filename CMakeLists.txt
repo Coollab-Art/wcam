@@ -27,9 +27,8 @@ target_sources(webcam_info PRIVATE ${SRC_FILES})
 
 if(APPLE)
     # Find CoreMedia and CoreMediaIO frameworks
-    find_library(COREMEDIA_FRAMEWORK CoreMedia)
-    find_library(COREMEDIAIO_FRAMEWORK CoreMediaIO)
-    target_link_libraries(${PROJECT_NAME} PRIVATE ${COREMEDIA_FRAMEWORK} ${COREMEDIAIO_FRAMEWORK})
+    find_library(AVFOUNDATION_FRAMEWORK AVFoundation)
+    target_link_libraries(${PROJECT_NAME} PRIVATE "-framework ${AVFOUNDATION_FRAMEWORK}")
 
     if(NOT XCODE)
         target_sources(webcam_info PRIVATE ${SRC_FILES_MACOS})

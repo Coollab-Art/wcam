@@ -26,9 +26,7 @@ static auto to_string(webcam_info::pixel_format format) -> std::string {
 }
 } // namespace webcam_info
 
-#include <CoreMedia/CMFormatDescription.h>
-// #include <CoreMedia/CMVideoFormatDescription.h>
-#include <CoreMediaIO/CMIOHardware.h>
+#include <AVFoundation/AVFoundation.h>
 
 auto get_webcam_info_from_device_id(CMIOObjectID deviceID)
     -> webcam_info::info {
@@ -75,29 +73,28 @@ auto get_webcam_info_from_device_id(CMIOObjectID deviceID)
 auto webcam_info::get_all_webcams() -> std::vector<info> {
   std::vector<info> list_webcams_infos{};
 
-  CMIOObjectID deviceID = kCMIOObjectPropertyScopeGlobal;
-  CMIOObjectPropertyAddress propAddress;
-  propAddress.mSelector = kCMIOHardwarePropertyDevices;
-  propAddress.mScope = kCMIOObjectPropertyScopeGlobal;
+  AVCaptureDeviceDiscoverySession *discoverySession =
+      [AVCaptureDeviceDiscoverySession
+          discoverySessionWithDeviceTypes:@[
+            AVCaptureDeviceTypeBuiltInWideAngleCamera
+          ]
+                                mediaType:AVMediaTypeVideo
+                                 position:AVCaptureDevicePositionUnspecified];
 
-  CMItemCount deviceCount = 0;
-  OSStatus status = CMIOObjectGetPropertyDataSize(
-      kCMIOObjectSystemObject, &propAddress, 0, nullptr, &deviceCount);
+  NSArray *devices = discoverySession.devices;
 
-  if (status == noErr && deviceCount > 0) {
-    CMIOObjectID *deviceIDs = new CMIOObjectID[deviceCount];
-    status = CMIOObjectGetPropertyData(
-        kCMIOObjectSystemObject, &propAddress, 0, nullptr,
-        deviceCount * sizeof(CMIOObjectID), &deviceCount, deviceIDs);
+  for (AVCaptureDevice *device in devices) {
+    std::string deviceName = [device.localizedName UTF8String];
+    // std::cout << "Device Name: " << deviceName << std::endl;
 
-    if (status == noErr) {
-      for (CMItemCount i = 0; i < deviceCount; i++) {
-        list_webcams_infos.push_back(
-            get_webcam_info_from_device_id(deviceIDs[i]));
-      }
+    for (AVCaptureDeviceFormat *format in device.formats) {
+      CMVideoDimensions dimensions =
+          CMVideoFormatDescriptionGetDimensions(format.formatDescription);
+      //   std::cout << "Video format: " << dimensions.width << "x"
+      // << dimensions.height << std::endl;
+      list_webcams_infos.emplace_back(deviceName, dimensions.width,
+                                      dimensions.height);
     }
-
-    delete[] deviceIDs;
   }
   return list_webcams_infos;
 }
