@@ -25,10 +25,6 @@ endif()
 add_subdirectory(.. ${CMAKE_CURRENT_SOURCE_DIR}/build/webcam_info)
 target_link_libraries(${PROJECT_NAME} PRIVATE webcam_info::webcam_info)
 
-if(WIN32)
-    target_link_libraries(${PROJECT_NAME} PRIVATE strmiids)
-endif()
-
 # ---Add quick_imgui---
 include(FetchContent)
 FetchContent_Declare(

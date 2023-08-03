@@ -292,7 +292,7 @@ auto webcam_info::get_all_webcams() -> std::vector<info>
 
 #endif
 
-// #if defined(__APPLE__)
+#if defined(__APPLE__)
 #include <CoreMediaIO/CMIOFormats.h>
 #include <CoreMediaIO/CMIOHardware.h>
 #include <IOKit/IOKitLib.h>
@@ -396,4 +396,4 @@ auto webcam_info::get_all_webcams() -> std::vector<info>
     return list_webcams_infos;
 }
 
-// #endif
+#endif

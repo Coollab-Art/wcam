@@ -6,6 +6,18 @@ add_library(webcam_info)
 add_library(webcam_info::webcam_info ALIAS webcam_info)
 target_compile_features(webcam_info PUBLIC cxx_std_17)
 
+if(WIN32)
+    target_link_libraries(webcam_info PRIVATE strmiids)
+endif()
+
+if(LINUX)
+    target_link_libraries(webcam_info PRIVATE v4l2)
+endif()
+
+if(APPLE)
+    target_link_libraries(webcam_info PRIVATE "-framework IOKit")
+endif()
+
 # ---Add source files---
 if(WARNINGS_AS_ERRORS_FOR_WEBCAM_INFO)
     target_include_directories(webcam_info PUBLIC include)
