@@ -31,7 +31,7 @@ std::string ConvertWCharToString(const wchar_t* wcharStr)
     return converter.to_bytes(wcharStr);
 }
 
-HRESULT GetVideoResolution(IBaseFilter* pCaptureFilter, int& width, int& height)
+HRESULT GetVideoParameters(IBaseFilter* pCaptureFilter, int& width, int& height, webcam_info::pixel_format& pixel_format)
 {
     HRESULT        hr         = S_OK;
     IEnumPins*     pEnumPins  = NULL;
@@ -72,8 +72,13 @@ HRESULT GetVideoResolution(IBaseFilter* pCaptureFilter, int& width, int& height)
                                     width                 = max(width, pVih->bmiHeader.biWidth);
                                     height                = max(height, pVih->bmiHeader.biHeight);
                                     // break;
-                                    int a;
                                 }
+                                if (pmtConfig->subtype == MEDIASUBTYPE_YUY2)
+                                    pixel_format = webcam_info::pixel_format::yuyv;
+                                else if (pmtConfig->subtype == MEDIASUBTYPE_MJPG)
+                                    pixel_format = webcam_info::pixel_format::mjpeg;
+                                else
+                                    pixel_format = webcam_info::pixel_format::unknown;
                             }
                         }
                     }
@@ -97,8 +102,9 @@ auto get_devices_info(IEnumMoniker* pEnum) -> std::vector<webcam_info::info>
 
     while (pEnum->Next(1, &pMoniker, NULL) == S_OK)
     {
-        int width{};
-        int height{};
+        int                       width{};
+        int                       height{};
+        webcam_info::pixel_format pixel_format{};
 
         IPropertyBag* pPropBag;
         HRESULT       hr = pMoniker->BindToStorage(0, 0, IID_PPV_ARGS(&pPropBag));
@@ -123,12 +129,12 @@ auto get_devices_info(IEnumMoniker* pEnum) -> std::vector<webcam_info::info>
             hr                          = pMoniker->BindToObject(0, 0, IID_PPV_ARGS(&pCaptureFilter));
             if (SUCCEEDED(hr))
             {
-                hr = GetVideoResolution(pCaptureFilter, width, height);
+                hr = GetVideoParameters(pCaptureFilter, width, height, pixel_format);
                 pCaptureFilter->Release();
 
                 if (SUCCEEDED(hr))
                 {
-                    list_webcam_info.push_back(webcam_info::info{ConvertWCharToString(var.bstrVal), width, height});
+                    list_webcam_info.push_back(webcam_info::info{ConvertWCharToString(var.bstrVal), width, height, pixel_format});
                 }
 
                 // printf("%S\n", var.bstrVal);
@@ -285,3 +291,109 @@ auto webcam_info::get_all_webcams() -> std::vector<info>
 }
 
 #endif
+
+// #if defined(__APPLE__)
+#include <CoreMediaIO/CMIOFormats.h>
+#include <CoreMediaIO/CMIOHardware.h>
+#include <IOKit/IOKitLib.h>
+#include <IOKit/usb/IOUSBLib.h>
+
+auto webcam_info::get_all_webcams() -> std::vector<info>
+{
+    std::vector<info> list_webcams_infos{};
+
+    kern_return_t kr;
+    io_iterator_t iterator;
+    kr = IOServiceGetMatchingServices(kIOMasterPortDefault, IOServiceMatching(kIOUSBInterfaceClassName), &iterator);
+
+    if (kr != KERN_SUCCESS)
+    {
+        std::cerr << "Failed to find any USB interfaces." << std::endl;
+        return list_webcams_infos;
+    }
+
+    io_service_t usbDevice;
+    while ((usbDevice = IOIteratorNext(iterator)))
+    {
+        std::string webcam_name{};
+        int         width{};
+        int         height{};
+
+        pixel_format format{pixel_format::unknown};
+
+        CFMutableDictionaryRef properties = NULL;
+        kr                                = IORegistryEntryCreateCFProperties(usbDevice, &properties, kCFAllocatorDefault, kNilOptions);
+
+        if (kr == KERN_SUCCESS)
+        {
+            CFStringRef productName = (CFStringRef)CFDictionaryGetValue(properties, CFSTR(kUSBProductString));
+            if (productName)
+            {
+                char productNameBuf[256];
+                if (CFStringGetCString(productName, productNameBuf, sizeof(productNameBuf), kCFStringEncodingUTF8))
+                {
+                    std::cout << "Webcam: " << productNameBuf << std::endl;
+                    webcam_name = std::string(productName);
+                }
+            }
+
+            CFNumberRef vendorID  = (CFNumberRef)CFDictionaryGetValue(properties, CFSTR(kUSBVendorID));
+            CFNumberRef productID = (CFNumberRef)CFDictionaryGetValue(properties, CFSTR(kUSBProductID));
+
+            int32_t vendorIDValue, productIDValue;
+            if (vendorID && productID && CFNumberGetValue(vendorID, kCFNumberSInt32Type, &vendorIDValue) && CFNumberGetValue(productID, kCFNumberSInt32Type, &productIDValue))
+            {
+                std::cout << "Vendor ID: 0x" << std::hex << vendorIDValue << std::dec << std::endl;
+                std::cout << "Product ID: 0x" << std::hex << productIDValue << std::dec << std::endl;
+            }
+
+            CFRelease(properties);
+        }
+
+        // Get video stream format descriptions
+        io_iterator_t formatIterator;
+        kr = IORegistryEntryGetChildIterator(usbDevice, kIOServicePlane, &formatIterator);
+
+        if (kr == KERN_SUCCESS)
+        {
+            io_service_t videoFormat;
+            while ((videoFormat = IOIteratorNext(formatIterator)))
+            {
+                CFMutableDictionaryRef formatProperties = NULL;
+                kr                                      = IORegistryEntryCreateCFProperties(videoFormat, &formatProperties, kCFAllocatorDefault, kNilOptions);
+
+                if (kr == KERN_SUCCESS)
+                {
+                    CFStringRef formatType = (CFStringRef)CFDictionaryGetValue(formatProperties, CFSTR(kIOStreamMode));
+
+                    if (formatType && CFStringCompare(formatType, CFSTR(kIOStreamModeVideo), 0) == kCFCompareEqualTo)
+                    {
+                        CFNumberRef formatWidth  = (CFNumberRef)CFDictionaryGetValue(formatProperties, CFSTR(kIOStreamModeFrameWidthKey));
+                        CFNumberRef formatHeight = (CFNumberRef)CFDictionaryGetValue(formatProperties, CFSTR(kIOStreamModeFrameHeightKey));
+
+                        if (formatWidth && formatHeight && CFNumberGetValue(formatWidth, kCFNumberSInt32Type, &width) && CFNumberGetValue(formatHeight, kCFNumberSInt32Type, &height))
+                        {
+                            std::cout << "Resolution: " << width << "x" << height << std::endl;
+                        }
+                    }
+
+                    CFRelease(formatProperties);
+                }
+
+                IOObjectRelease(videoFormat);
+            }
+
+            IOObjectRelease(formatIterator);
+        }
+
+        IOObjectRelease(usbDevice);
+
+        list_webcams_infos.push_back(info{webcam_name, width, height});
+    }
+
+    IOObjectRelease(iterator);
+
+    return list_webcams_infos;
+}
+
+// #endif
