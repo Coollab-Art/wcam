@@ -10,10 +10,6 @@ if(WIN32)
     target_link_libraries(webcam_info PRIVATE strmiids)
 endif()
 
-if(APPLE)
-    target_link_libraries(webcam_info PRIVATE "-framework IOKit")
-endif()
-
 # ---Add source files---
 if(WARNINGS_AS_ERRORS_FOR_WEBCAM_INFO)
     target_include_directories(webcam_info PUBLIC include)
@@ -26,7 +22,9 @@ file(GLOB_RECURSE SRC_FILES_MACOS CONFIGURE_DEPENDS src/*.mm)
 target_sources(webcam_info PRIVATE ${SRC_FILES})
 
 if(APPLE)
-    target_link_libraries(${PROJECT_NAME} PRIVATE "-framework AVFoundation")
+    target_link_libraries(webcam_info PRIVATE "-framework AVFoundation")
+    target_link_libraries(webcam_info PRIVATE "-framework CoreMedia")
+    target_link_libraries(webcam_info PRIVATE "-framework IOKit")
 
     if(NOT XCODE)
         target_sources(webcam_info PRIVATE ${SRC_FILES_MACOS})
