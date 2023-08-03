@@ -7,6 +7,8 @@ namespace webcam_info {
 enum class pixel_format { unknown, yuyv, mjpeg };
 
 struct info {
+  info(const std::string &name, int width, int height)
+      : name(name), width(width), height(height){};
   std::string name{};
   int width{};
   int height{};
