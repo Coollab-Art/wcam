@@ -26,9 +26,7 @@ file(GLOB_RECURSE SRC_FILES_MACOS CONFIGURE_DEPENDS src/*.mm)
 target_sources(webcam_info PRIVATE ${SRC_FILES})
 
 if(APPLE)
-    # Find CoreMedia and CoreMediaIO frameworks
-    find_library(AVFOUNDATION_FRAMEWORK AVFoundation)
-    target_link_libraries(${PROJECT_NAME} PRIVATE "-framework ${AVFOUNDATION_FRAMEWORK}")
+    target_link_libraries(${PROJECT_NAME} PRIVATE "-framework AVFoundation")
 
     if(NOT XCODE)
         target_sources(webcam_info PRIVATE ${SRC_FILES_MACOS})
