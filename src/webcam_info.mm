@@ -1,3 +1,4 @@
+#include <AVFoundation/AVFoundation.h>
 #include <string>
 #include <vector>
 
@@ -24,11 +25,8 @@ static auto to_string(webcam_info::pixel_format format) -> std::string {
     return "unknown";
   }
 }
-} // namespace webcam_info
 
-#include <AVFoundation/AVFoundation.h>
-
-auto webcam_info::get_all_webcams() -> std::vector<info> {
+auto get_all_webcams() -> std::vector<info> {
   std::vector<info> list_webcams_infos{};
 
   AVCaptureDeviceDiscoverySession *discoverySession =
@@ -56,3 +54,4 @@ auto webcam_info::get_all_webcams() -> std::vector<info> {
   }
   return list_webcams_infos;
 }
+} // namespace webcam_info
