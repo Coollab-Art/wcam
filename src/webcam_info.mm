@@ -28,48 +28,6 @@ static auto to_string(webcam_info::pixel_format format) -> std::string {
 
 #include <AVFoundation/AVFoundation.h>
 
-auto get_webcam_info_from_device_id(CMIOObjectID deviceID)
-    -> webcam_info::info {
-  webcam_info::info webcam_infos{};
-  CMIOObjectPropertyAddress propAddress;
-  propAddress.mSelector = kCMIOStreamPropertyFormatDescriptions;
-  propAddress.mScope = kCMIODevicePropertyScopeInput;
-
-  CMFormatDescriptionRef formatDesc = nullptr;
-  UInt32 dataSize = sizeof(CMFormatDescriptionRef);
-  OSStatus status = CMIOObjectGetPropertyData(
-      deviceID, &propAddress, 0, nullptr, dataSize, &dataSize, &formatDesc);
-
-  if (status == noErr && formatDesc != nullptr) {
-    CMVideoFormatDescriptionRef videoDesc =
-        (CMVideoFormatDescriptionRef)formatDesc;
-
-    CMIOObjectPropertyAddress propDeviceNameAddress;
-    propDeviceNameAddress.mSelector = kCMIODevicePropertyDeviceName;
-    propDeviceNameAddress.mScope = kCMIODevicePropertyScopeInput;
-
-    CFStringRef deviceName = nullptr;
-    dataSize = sizeof(CFStringRef);
-    status =
-        CMIOObjectGetPropertyData(deviceID, &propDeviceNameAddress, 0, nullptr,
-                                  dataSize, &dataSize, &deviceName);
-
-    if (status == noErr && deviceName != nullptr) {
-      char nameBuf[256];
-      CFStringGetCString(deviceName, nameBuf, sizeof(nameBuf),
-                         kCFStringEncodingUTF8);
-      webcam_infos.name = std::string(nameBuf);
-      CFRelease(deviceName);
-    }
-
-    webcam_infos.width = CMVideoFormatDescriptionGetDimensions(videoDesc).width;
-    webcam_infos.height =
-        CMVideoFormatDescriptionGetDimensions(videoDesc).height;
-
-    CFRelease(formatDesc);
-  }
-}
-
 auto webcam_info::get_all_webcams() -> std::vector<info> {
   std::vector<info> list_webcams_infos{};
 
