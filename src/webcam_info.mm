@@ -49,7 +49,8 @@ auto get_all_webcams() -> std::vector<info> {
       //   std::cout << "Video format: " << dimensions.width << "x"
       // << dimensions.height << std::endl;
       list_webcams_infos.emplace_back(deviceName, dimensions.width,
-                                      dimensions.height);
+                                      dimensions.height,
+                                      webcam_info::pixel_format::unknown);
     }
   }
   return list_webcams_infos;
