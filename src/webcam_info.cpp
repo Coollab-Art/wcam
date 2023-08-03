@@ -22,8 +22,10 @@ auto webcam_info::to_string(webcam_info::pixel_format format) -> std::string
 
 #if defined(_WIN32)
 
+#if defined(GCC) || defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wlanguage-extension-token"
+#endif
 
 #include <dshow.h>
 #include <array>
@@ -195,7 +197,10 @@ auto webcam_info::get_all_webcams() -> std::vector<info>
     return list_webcam_info;
 }
 
+#if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic pop
+#endif
+
 #endif
 
 #if defined(__linux__)
