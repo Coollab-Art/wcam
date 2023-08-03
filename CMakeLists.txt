@@ -10,10 +10,6 @@ if(WIN32)
     target_link_libraries(webcam_info PRIVATE strmiids)
 endif()
 
-if(LINUX)
-    target_link_libraries(webcam_info PRIVATE v4l2)
-endif()
-
 if(APPLE)
     target_link_libraries(webcam_info PRIVATE "-framework IOKit")
 endif()
