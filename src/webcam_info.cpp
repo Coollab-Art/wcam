@@ -3,7 +3,6 @@
 #include <string>
 #include <variant>
 #include <vector>
-#include <webcam_info/webcam_info.hpp>
 
 auto webcam_info::to_string(webcam_info::pixel_format format) -> std::string
 {
@@ -300,91 +299,6 @@ auto webcam_info::get_all_webcams() -> std::vector<info>
         list_webcam_info.push_back(info{std::string(deviceName), width, height, format});
     }
     return list_webcam_info;
-}
-
-#endif
-
-#if defined(__APPLE__)
-#include <CoreMedia/CMFormatDescription.h>
-#include <CoreMedia/CMVideoFormatDescription.h>
-// #include <CoreMediaIO/CMIOFormats.h>
-#include <CoreMediaIO/CMIOHardware.h>
-#include <iostream>
-
-void printVideoFormatInfo(CMVideoFormatDescriptionRef videoDesc)
-{
-    int width  = CMVideoFormatDescriptionGetDimensions(videoDesc).width;
-    int height = CMVideoFormatDescriptionGetDimensions(videoDesc).height;
-
-    std::cout << "Video format: " << width << "x" << height << std::endl;
-}
-
-auto get_webcam_info_from_device_id(CMIOObjectID deviceID) -> webcam_info::info
-{
-    webcam_info::info         webcam_infos{};
-    CMIOObjectPropertyAddress propAddress;
-    propAddress.mSelector = kCMIOStreamPropertyFormatDescriptions;
-    propAddress.mScope    = kCMIODevicePropertyScopeInput;
-
-    CMFormatDescriptionRef formatDesc = nullptr;
-    UInt32                 dataSize   = sizeof(CMFormatDescriptionRef);
-    OSStatus               status     = CMIOObjectGetPropertyData(deviceID, &propAddress, 0, nullptr, dataSize, &dataSize, &formatDesc);
-
-    if (status == noErr && formatDesc != nullptr)
-    {
-        CMVideoFormatDescriptionRef videoDesc = (CMVideoFormatDescriptionRef)formatDesc;
-
-        CMIOObjectPropertyAddress propDeviceNameAddress;
-        propDeviceNameAddress.mSelector = kCMIODevicePropertyDeviceName;
-        propDeviceNameAddress.mScope    = kCMIODevicePropertyScopeInput;
-
-        CFStringRef deviceName = nullptr;
-        dataSize               = sizeof(CFStringRef);
-        status                 = CMIOObjectGetPropertyData(deviceID, &propDeviceNameAddress, 0, nullptr, dataSize, &dataSize, &deviceName);
-
-        if (status == noErr && deviceName != nullptr)
-        {
-            char nameBuf[256];
-            CFStringGetCString(deviceName, nameBuf, sizeof(nameBuf), kCFStringEncodingUTF8);
-            webcam_infos.name = std::string(nameBuf);
-            CFRelease(deviceName);
-        }
-
-        webcam_infos.width  = CMVideoFormatDescriptionGetDimensions(videoDesc).width;
-        webcam_infos.height = CMVideoFormatDescriptionGetDimensions(videoDesc).height;
-
-        CFRelease(formatDesc);
-    }
-}
-
-auto webcam_info::get_all_webcams() -> std::vector<info>
-{
-    std::vector<info> list_webcams_infos{};
-
-    CMIOObjectID              deviceID = kCMIOObjectPropertyScopeGlobal;
-    CMIOObjectPropertyAddress propAddress;
-    propAddress.mSelector = kCMIOHardwarePropertyDevices;
-    propAddress.mScope    = kCMIOObjectPropertyScopeGlobal;
-
-    CMItemCount deviceCount = 0;
-    OSStatus    status      = CMIOObjectGetPropertyDataSize(kCMIOObjectSystemObject, &propAddress, 0, nullptr, &deviceCount);
-
-    if (status == noErr && deviceCount > 0)
-    {
-        CMIOObjectID* deviceIDs = new CMIOObjectID[deviceCount];
-        status                  = CMIOObjectGetPropertyData(kCMIOObjectSystemObject, &propAddress, 0, nullptr, deviceCount * sizeof(CMIOObjectID), &deviceCount, deviceIDs);
-
-        if (status == noErr)
-        {
-            for (CMItemCount i = 0; i < deviceCount; i++)
-            {
-                list_webcams_infos.push_back(get_webcam_info_from_device_id(deviceIDs[i]));
-            }
-        }
-
-        delete[] deviceIDs;
-    }
-    return list_webcams_infos;
 }
 
 #endif

@@ -22,7 +22,13 @@ else()
 endif()
 
 file(GLOB_RECURSE SRC_FILES CONFIGURE_DEPENDS src/*.cpp)
-target_sources(webcam_info PRIVATE ${SRC_FILES})
+file(GLOB_RECURSE SRC_FILES_MACOS CONFIGURE_DEPENDS src/*.mm)
+
+if(APPLE)
+    target_sources(webcam_info PRIVATE ${SRC_FILES_MACOS})
+else()
+    target_sources(webcam_info PRIVATE ${SRC_FILES})
+endif()
 
 # ---Set warning level---
 if(MSVC)
