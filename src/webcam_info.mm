@@ -1,3 +1,4 @@
+#include "webcam_info/webcam_info.hpp"
 #include <AVFoundation/AVFoundation.h>
 #include <string>
 #include <vector>
@@ -7,8 +8,9 @@ namespace webcam_info {
 enum class pixel_format { unknown, yuyv, mjpeg };
 
 struct info {
-  info(const std::string &name, int width, int height)
-      : name(name), width(width), height(height){};
+  info(const std::string &name, int width, int height,
+       pixel_format format = pixel_format::unknown)
+      : name(name), width(width), height(height), format(format){};
   std::string name{};
   int width{};
   int height{};
