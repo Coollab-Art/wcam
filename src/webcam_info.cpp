@@ -3,6 +3,7 @@
 #include <string>
 #include <variant>
 #include <vector>
+#include <webcam_info/webcam_info.hpp>
 
 auto webcam_info::to_string(webcam_info::pixel_format format) -> std::string
 {

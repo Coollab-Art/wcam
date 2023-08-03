@@ -23,11 +23,19 @@ endif()
 
 file(GLOB_RECURSE SRC_FILES CONFIGURE_DEPENDS src/*.cpp)
 file(GLOB_RECURSE SRC_FILES_MACOS CONFIGURE_DEPENDS src/*.mm)
+target_sources(webcam_info PRIVATE ${SRC_FILES})
 
 if(APPLE)
-    target_sources(webcam_info PRIVATE ${SRC_FILES_MACOS})
-else()
-    target_sources(webcam_info PRIVATE ${SRC_FILES})
+    # Find CoreMedia and CoreMediaIO frameworks
+    find_library(COREMEDIA_FRAMEWORK CoreMedia)
+    find_library(COREMEDIAIO_FRAMEWORK CoreMediaIO)
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${COREMEDIA_FRAMEWORK} ${COREMEDIAIO_FRAMEWORK})
+
+    if(NOT XCODE)
+        target_sources(webcam_info PRIVATE ${SRC_FILES_MACOS})
+    else()
+        set_source_files_properties(${SRC_FILES_MACOS} PROPERTIES COMPILE_FLAGS -fobjc-arc)
+    endif()
 endif()
 
 # ---Set warning level---
