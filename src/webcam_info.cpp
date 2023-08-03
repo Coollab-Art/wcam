@@ -260,7 +260,7 @@ auto webcam_info::get_all_webcams() -> std::vector<info>
                 {
                     if (frameInterval.type == V4L2_FRMIVAL_TYPE_DISCRETE)
                     {
-                        float fps = 1.0f * frameInterval.discrete.denominator / frameInterval.discrete.numerator;
+                        float fps = 1.0f * static_cast<float>(frameInterval.discrete.denominator) / static_cast<float>(frameInterval.discrete.numerator);
                         if (fps > 29. && frameSize.type == V4L2_FRMSIZE_TYPE_DISCRETE)
                         {
                             width  = std::max(width, static_cast<int>(frameSize.discrete.width));
