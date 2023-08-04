@@ -142,7 +142,7 @@ auto get_devices_info(IEnumMoniker* pEnum) -> std::vector<webcam_info::info>
 
                 if (SUCCEEDED(hr))
                 {
-                    list_webcam_info.push_back(webcam_info::info{ConvertWCharToString(var.bstrVal), width, height, pixel_format});
+                    list_webcam_info.push_back(webcam_info::info{ConvertWCharToString(var.bstrVal), {width, height}, pixel_format});
                 }
 
                 // printf("%S\n", var.bstrVal);
@@ -297,7 +297,7 @@ auto webcam_info::get_all_webcams() -> std::vector<info>
         }
         if (width <= 0 || height <= 0)
             continue;
-        list_webcam_info.push_back(info{std::string(deviceName), width, height, format});
+        list_webcam_info.push_back(info{std::string(deviceName), {width, height}, format});
     }
     return list_webcam_info;
 }
