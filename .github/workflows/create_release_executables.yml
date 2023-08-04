@@ -48,6 +48,10 @@ jobs:
     - name: Build
       run: cmake --build ${{github.workspace}}/build --config Debug --target ${{env.TARGET}}
 
+    - name: Rename
+      run: |
+            mv ${{github.workspace}}/build/webcam_info-tests ${{github.workspace}}/build/webcam_info-tests-linux
+
     - name: Release
       uses: softprops/action-gh-release@v1
       with:
@@ -67,6 +71,10 @@ jobs:
 
     - name: Build
       run: cmake --build ${{github.workspace}}/build --config Debug --target ${{env.TARGET}}
+
+    - name: Rename
+      run: |
+            mv ${{github.workspace}}/build/webcam_info-tests ${{github.workspace}}/build/webcam_info-tests-macos
 
     - name: Release
       uses: softprops/action-gh-release@v1
