@@ -55,7 +55,7 @@ jobs:
     - name: Release
       uses: softprops/action-gh-release@v1
       with:
-        files: ${{github.workspace}}/build/webcam_info-tests
+        files: ${{github.workspace}}/build/webcam_info-tests-linux
 
 #-----------------------------------------------------------------------------------------------
   MacOS_Clang_Release:
@@ -79,5 +79,5 @@ jobs:
     - name: Release
       uses: softprops/action-gh-release@v1
       with:
-        files: ${{github.workspace}}/bin/webcam_info-tests
+        files: ${{github.workspace}}/build/webcam_info-tests-macos
 
