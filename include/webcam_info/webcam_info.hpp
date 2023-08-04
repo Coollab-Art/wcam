@@ -11,8 +11,8 @@ enum class pixel_format { unknown,
 auto to_string(webcam_info::pixel_format format) -> std::string;
 
 struct resolution {
-    int  width{};
-    int  height{};
+    int  width{1};
+    int  height{1};
     auto operator==(const resolution& res) const -> bool
     {
         return res.width == width && res.height == height;
