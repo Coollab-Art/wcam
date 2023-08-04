@@ -35,6 +35,7 @@ auto get_all_webcams() -> std::vector<info> {
 
   for (AVCaptureDevice *device in devices) {
     std::string deviceName = [device.localizedName UTF8String];
+    std::vector<webcam_info::resolution> list_resolution{};
     // std::cout << "Device Name: " << deviceName << std::endl;
 
     for (AVCaptureDeviceFormat *format in device.formats) {
@@ -42,11 +43,10 @@ auto get_all_webcams() -> std::vector<info> {
           CMVideoFormatDescriptionGetDimensions(format.formatDescription);
       //   std::cout << "Video format: " << dimensions.width << "x"
       // << dimensions.height << std::endl;
-      list_webcams_infos.push_back(
-          webcam_info::info{deviceName,
-                            {dimensions.width, dimensions.height},
-                            webcam_info::pixel_format::unknown});
+      list_resolution.push_back({dimensions.width, dimensions.height});
     }
+    list_webcams_infos.push_back(webcam_info::info{
+        deviceName, list_resolution, webcam_info::pixel_format::unknown});
   }
   return list_webcams_infos;
 }

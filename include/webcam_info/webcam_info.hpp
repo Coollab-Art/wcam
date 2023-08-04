@@ -19,9 +19,9 @@ struct resolution {
     };
 };
 struct info {
-    std::string  name{};
-    resolution   resolution{};
-    pixel_format format{pixel_format::unknown};
+    std::string             name{};
+    std::vector<resolution> list_resolution{};
+    pixel_format            format{pixel_format::unknown};
 };
 
 auto get_all_webcams() -> std::vector<info>;

@@ -39,7 +39,7 @@ auto ConvertWCharToString(const wchar_t* wcharStr) -> std::string
     return ch.data();
 }
 
-auto GetVideoParameters(IBaseFilter* pCaptureFilter, int& width, int& height, webcam_info::pixel_format& pixel_format) -> HRESULT
+auto GetVideoParameters(IBaseFilter* pCaptureFilter, std::vector<webcam_info::resolution> list_resolution, webcam_info::pixel_format& pixel_format) -> HRESULT
 {
     HRESULT    hr        = S_OK;
     IEnumPins* pEnumPins = nullptr;
@@ -77,9 +77,7 @@ auto GetVideoParameters(IBaseFilter* pCaptureFilter, int& width, int& height, we
                                 if (pmtConfig->formattype == FORMAT_VideoInfo)
                                 {
                                     auto* pVih = reinterpret_cast<VIDEOINFOHEADER*>(pmtConfig->pbFormat);
-                                    width      = max(width, pVih->bmiHeader.biWidth);
-                                    height     = max(height, pVih->bmiHeader.biHeight);
-                                    // break;
+                                    list_resolution.push_back({pVih->bmiHeader.biWidth, pVih->bmiHeader.biHeight});
                                 }
                                 if (pmtConfig->subtype == MEDIASUBTYPE_YUY2)
                                     pixel_format = webcam_info::pixel_format::yuyv;
@@ -110,9 +108,8 @@ auto get_devices_info(IEnumMoniker* pEnum) -> std::vector<webcam_info::info>
 
     while (pEnum->Next(1, &pMoniker, nullptr) == S_OK)
     {
-        int                       width{};
-        int                       height{};
-        webcam_info::pixel_format pixel_format{};
+        std::vector<webcam_info::resolution> list_resolution{};
+        webcam_info::pixel_format            pixel_format{};
 
         IPropertyBag* pPropBag = nullptr;
         HRESULT       hr       = pMoniker->BindToStorage(nullptr, nullptr, IID_PPV_ARGS(&pPropBag));
@@ -137,12 +134,12 @@ auto get_devices_info(IEnumMoniker* pEnum) -> std::vector<webcam_info::info>
             hr                          = pMoniker->BindToObject(nullptr, nullptr, IID_PPV_ARGS(&pCaptureFilter));
             if (SUCCEEDED(hr))
             {
-                hr = GetVideoParameters(pCaptureFilter, width, height, pixel_format);
+                hr = GetVideoParameters(pCaptureFilter, list_resolution, pixel_format);
                 pCaptureFilter->Release();
 
                 if (SUCCEEDED(hr))
                 {
-                    list_webcam_info.push_back(webcam_info::info{ConvertWCharToString(var.bstrVal), {width, height}, pixel_format});
+                    list_webcam_info.push_back(webcam_info::info{ConvertWCharToString(var.bstrVal), list_resolution, pixel_format});
                 }
 
                 // printf("%S\n", var.bstrVal);
@@ -248,9 +245,8 @@ auto webcam_info::get_all_webcams() -> std::vector<info>
         char deviceName[256];
         strcpy(deviceName, (char*)cap.card);
 
-        int          width{};
-        int          height{};
-        pixel_format format{};
+        std::vector<webcam_info::resolution> list_resolution{};
+        pixel_format                         format{};
 
         v4l2_fmtdesc formatDescription{};
         formatDescription.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
@@ -272,11 +268,10 @@ auto webcam_info::get_all_webcams() -> std::vector<info>
                 {
                     if (frameInterval.type == V4L2_FRMIVAL_TYPE_DISCRETE)
                     {
-                        float fps = 1.0f * static_cast<float>(frameInterval.discrete.denominator) / static_cast<float>(frameInterval.discrete.numerator);
-                        if (fps > 29. && frameSize.type == V4L2_FRMSIZE_TYPE_DISCRETE)
+                        // float fps = 1.0f * static_cast<float>(frameInterval.discrete.denominator) / static_cast<float>(frameInterval.discrete.numerator);
+                        if (/*fps > 29. &&*/ frameSize.type == V4L2_FRMSIZE_TYPE_DISCRETE)
                         {
-                            width  = std::max(width, static_cast<int>(frameSize.discrete.width));
-                            height = std::max(height, static_cast<int>(frameSize.discrete.height));
+                            list_resolution.push_back({width, height});
                             std::string format_name(reinterpret_cast<char*>(formatDescription.description), 32);
 
                             if (format_name.find("Motion-JPEG") != std::string::npos)
@@ -297,7 +292,7 @@ auto webcam_info::get_all_webcams() -> std::vector<info>
         }
         if (width <= 0 || height <= 0)
             continue;
-        list_webcam_info.push_back(info{std::string(deviceName), {width, height}, format});
+        list_webcam_info.push_back(info{std::string(deviceName), list_resolution, format});
     }
     return list_webcam_info;
 }
