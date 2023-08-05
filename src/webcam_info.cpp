@@ -3,7 +3,7 @@
 
 namespace webcam_info {
 
-static auto grab_all_webcams_infos_impl() -> std::vector<Info>;
+auto grab_all_webcams_infos_impl() -> std::vector<Info>;
 
 auto grab_all_webcams_infos() -> std::vector<Info>
 {
@@ -160,7 +160,7 @@ static auto enumerate_devices(REFGUID category, IEnumMoniker** ppEnum) -> HRESUL
     return hr;
 }
 
-static auto webcam_info::grab_all_webcams_infos_impl() -> std::vector<Info>
+auto webcam_info::grab_all_webcams_infos_impl() -> std::vector<Info>
 {
     std::vector<Info> list_webcam_info{};
     HRESULT           hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
@@ -229,7 +229,7 @@ static auto find_available_resolutions(int const video_device) -> std::vector<we
     return available_resolutions;
 }
 
-static auto webcam_info::grab_all_webcams_infos_impl() -> std::vector<Info>
+auto webcam_info::grab_all_webcams_infos_impl() -> std::vector<Info>
 {
     std::vector<Info> list_webcam_info{};
 
