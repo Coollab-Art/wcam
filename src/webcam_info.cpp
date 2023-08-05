@@ -186,98 +186,78 @@ static auto webcam_info::grab_all_webcams_infos_impl() -> std::vector<Info>
 
 #if defined(__linux__)
 
-#include <errno.h>
 #include <fcntl.h>
 #include <linux/videodev2.h>
-#include <string.h>
 #include <sys/ioctl.h>
-#include <unistd.h>
-#include <algorithm>
-#include <cstdio>
+#include <filesystem>
 
-static auto webcam_info::grab_all_webcams_infos_impl() -> std::vector<info>
+static auto find_available_resolutions(int const video_device) -> std::vector<webcam_info::Resolution>
 {
-    std::vector<info> list_webcam_info{};
+    std::vector<webcam_info::Resolution> available_resolutions;
 
-    std::vector<std::string> list_camera_path{};
-    std::string              camera_path = "/dev/video0";
-    for (const auto& entry : std::filesystem::directory_iterator("/dev"))
+    v4l2_fmtdesc format_description{};
+    format_description.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    while (ioctl(video_device, VIDIOC_ENUM_FMT, &format_description) == 0)
+    {
+        v4l2_frmsizeenum frame_size{};
+        frame_size.pixel_format = format_description.pixelformat;
+        while (ioctl(video_device, VIDIOC_ENUM_FRAMESIZES, &frame_size) == 0)
+        {
+            v4l2_frmivalenum frame_interval{};
+            frame_interval.pixel_format = format_description.pixelformat;
+            frame_interval.width        = frame_size.discrete.width;
+            frame_interval.height       = frame_size.discrete.height;
+
+            while (ioctl(video_device, VIDIOC_ENUM_FRAMEINTERVALS, &frame_interval) == 0)
+            {
+                if (frame_interval.type == V4L2_FRMIVAL_TYPE_DISCRETE)
+                {
+                    // float fps = static_cast<float>(frameInterval.discrete.denominator) / static_cast<float>(frameInterval.discrete.numerator);
+                    if (/*fps > 29. &&*/ frame_size.type == V4L2_FRMSIZE_TYPE_DISCRETE)
+                    {
+                        available_resolutions.push_back({static_cast<int>(frame_interval.width), static_cast<int>(frame_interval.height)});
+                    }
+                }
+                frame_interval.index++;
+            }
+            frame_size.index++;
+        }
+
+        format_description.index++;
+    }
+
+    return available_resolutions;
+}
+
+static auto webcam_info::grab_all_webcams_infos_impl() -> std::vector<Info>
+{
+    std::vector<Info> list_webcam_info{};
+
+    for (auto const& entry : std::filesystem::directory_iterator("/dev"))
     {
         if (entry.path().string().find("video") == std::string::npos)
             continue;
 
-        int video_device = open(entry.path().c_str(), O_RDONLY);
+        int const video_device = open(entry.path().c_str(), O_RDONLY);
         if (video_device == -1)
             continue;
 
         v4l2_capability cap{};
-
         if (ioctl(video_device, VIDIOC_QUERYCAP, &cap) == -1)
-        {
-            std::cout << "Erreur lors de l'obtention des informations du périphérique";
             continue;
-        }
 
-        // Vérification si le périphérique est capable de capturer des flux vidéo
         if (!(cap.capabilities & V4L2_CAP_VIDEO_CAPTURE))
-        {
-            std::cout << "Le périphérique n'est pas capable de capturer des flux vidéo\n";
             continue;
-        }
 
-        // Récupération du nom du périphérique
-        char deviceName[256];
-        strcpy(deviceName, (char*)cap.card);
+        std::string const webcam_name = reinterpret_cast<char const*>(cap.card); // NOLINT(*-pro-type-reinterpret-cast)
 
-        std::vector<webcam_info::resolution> available_resolutions{};
-        pixel_format                         format{};
-
-        v4l2_fmtdesc formatDescription{};
-        formatDescription.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-
-        while (ioctl(video_device, VIDIOC_ENUM_FMT, &formatDescription) == 0)
-        {
-            printf("  - Format : %s\n", formatDescription.description);
-            // Récupérer les résolutions associées à chaque format
-            v4l2_frmsizeenum frameSize{};
-            frameSize.pixel_format = formatDescription.pixelformat;
-            while (ioctl(video_device, VIDIOC_ENUM_FRAMESIZES, &frameSize) == 0)
-            {
-                v4l2_frmivalenum frameInterval{};
-                frameInterval.pixel_format = formatDescription.pixelformat;
-                frameInterval.width        = frameSize.discrete.width;
-                frameInterval.height       = frameSize.discrete.height;
-
-                while (ioctl(video_device, VIDIOC_ENUM_FRAMEINTERVALS, &frameInterval) == 0)
-                {
-                    if (frameInterval.type == V4L2_FRMIVAL_TYPE_DISCRETE)
-                    {
-                        // float fps = 1.0f * static_cast<float>(frameInterval.discrete.denominator) / static_cast<float>(frameInterval.discrete.numerator);
-                        if (/*fps > 29. &&*/ frameSize.type == V4L2_FRMSIZE_TYPE_DISCRETE)
-                        {
-                            available_resolutions.push_back({width, height});
-                            std::string format_name(reinterpret_cast<char*>(formatDescription.description), 32);
-
-                            if (format_name.find("Motion-JPEG") != std::string::npos)
-                                format = pixel_format::mjpeg;
-
-                            else if (format_name.find("YUYV") != std::string::npos)
-                                format = pixel_format::yuyv;
-                            else
-                                format = pixel_format::unknown;
-                        }
-                    }
-                    frameInterval.index++;
-                }
-                frameSize.index++;
-            }
-
-            formatDescription.index++;
-        }
-        if (width <= 0 || height <= 0)
+        std::vector<webcam_info::Resolution> const available_resolutions = find_available_resolutions(video_device);
+        if (available_resolutions.empty())
             continue;
-        list_webcam_info.push_back(info{std::string(deviceName), available_resolutions, format});
+
+        list_webcam_info.push_back({webcam_name, available_resolutions});
     }
+
     return list_webcam_info;
 }
 
