@@ -4,26 +4,20 @@
 
 namespace webcam_info {
 
-enum class pixel_format { unknown,
-                          yuyv,
-                          mjpeg };
-
-auto to_string(webcam_info::pixel_format format) -> std::string;
-
-struct resolution {
-    int  width{1};
-    int  height{1};
-    auto operator==(const resolution& res) const -> bool
+struct Resolution {
+    int         width{1};
+    int         height{1};
+    friend auto operator==(Resolution const& a, Resolution const& b) -> bool
     {
-        return res.width == width && res.height == height;
+        return a.width == b.width && a.height == b.height;
     };
 };
-struct info {
+
+struct Info {
     std::string             name{};
-    std::vector<resolution> list_resolution{};
-    pixel_format            format{pixel_format::unknown};
+    std::vector<Resolution> available_resolutions{};
 };
 
-auto get_all_webcams() -> std::vector<info>;
+auto grab_all_webcams_infos() -> std::vector<Info>;
 
 } // namespace webcam_info

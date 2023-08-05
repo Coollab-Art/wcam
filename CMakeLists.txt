@@ -6,10 +6,6 @@ add_library(webcam_info)
 add_library(webcam_info::webcam_info ALIAS webcam_info)
 target_compile_features(webcam_info PUBLIC cxx_std_17)
 
-if(WIN32)
-    target_link_libraries(webcam_info PRIVATE strmiids)
-endif()
-
 # ---Add source files---
 if(WARNINGS_AS_ERRORS_FOR_WEBCAM_INFO)
     target_include_directories(webcam_info PUBLIC include)
@@ -18,20 +14,7 @@ else()
 endif()
 
 file(GLOB_RECURSE SRC_FILES CONFIGURE_DEPENDS src/*.cpp)
-file(GLOB_RECURSE SRC_FILES_MACOS CONFIGURE_DEPENDS src/*.mm)
 target_sources(webcam_info PRIVATE ${SRC_FILES})
-
-if(APPLE)
-    target_link_libraries(webcam_info PRIVATE "-framework AVFoundation")
-    target_link_libraries(webcam_info PRIVATE "-framework CoreMedia")
-    target_link_libraries(webcam_info PRIVATE "-framework IOKit")
-
-    if(NOT XCODE)
-        target_sources(webcam_info PRIVATE ${SRC_FILES_MACOS})
-    else()
-        set_source_files_properties(${SRC_FILES_MACOS} PROPERTIES COMPILE_FLAGS -fobjc-arc)
-    endif()
-endif()
 
 # ---Set warning level---
 if(MSVC)
@@ -46,5 +29,21 @@ if(WARNINGS_AS_ERRORS_FOR_WEBCAM_INFO)
         target_compile_options(webcam_info PRIVATE /WX)
     else()
         target_compile_options(webcam_info PRIVATE -Werror)
+    endif()
+endif()
+
+# ---Platform-specific setup---
+if(WIN32)
+    target_link_libraries(webcam_info PRIVATE strmiids)
+elseif(APPLE)
+    target_link_libraries(webcam_info PRIVATE "-framework AVFoundation")
+    target_link_libraries(webcam_info PRIVATE "-framework CoreMedia")
+
+    # target_link_libraries(webcam_info PRIVATE "-framework IOKit")
+    file(GLOB_RECURSE SRC_FILES_MACOS CONFIGURE_DEPENDS src/*.mm)
+    target_sources(webcam_info PRIVATE ${SRC_FILES_MACOS})
+
+    if(NOT XCODE)
+        set_source_files_properties(${SRC_FILES_MACOS} PROPERTIES COMPILE_FLAGS -fobjc-arc)
     endif()
 endif()

@@ -1,24 +1,26 @@
-#include <filesystem>
-#include <iostream>
-#include <string>
-#include <variant>
-#include <vector>
+#include <algorithm>
 #include <webcam_info/webcam_info.hpp>
 
-auto webcam_info::to_string(webcam_info::pixel_format format) -> std::string
+namespace webcam_info {
+
+static auto grab_all_webcams_infos_impl() -> std::vector<Info>;
+
+auto grab_all_webcams_infos() -> std::vector<Info>
 {
-    switch (format)
+    auto list_webcams_infos = grab_all_webcams_infos_impl();
+    for (auto& webcam_info : list_webcams_infos)
     {
-    case webcam_info::pixel_format::yuyv:
-        return "yuyv";
-
-    case webcam_info::pixel_format::mjpeg:
-        return "mjpeg";
-
-    default:
-        return "unknown";
+        auto& resolutions = webcam_info.available_resolutions;
+        std::sort(resolutions.begin(), resolutions.end(), [](Resolution const& res_a, Resolution const& res_b) {
+            return res_a.width > res_b.width
+                   || (res_a.width == res_b.width && res_a.height > res_b.height);
+        });
+        resolutions.erase(std::unique(resolutions.begin(), resolutions.end()), resolutions.end());
     }
+    return list_webcams_infos;
 }
+
+} // namespace webcam_info
 
 #if defined(_WIN32)
 
@@ -29,137 +31,119 @@ auto webcam_info::to_string(webcam_info::pixel_format format) -> std::string
 
 #include <dshow.h>
 #include <array>
-#include <codecvt>
+#include <clocale>
+#include <cstdlib>
 
-auto ConvertWCharToString(const wchar_t* wcharStr) -> std::string
+static auto convert_wstr_to_str(std::wstring const& wstr) -> std::string
 {
-    std::array<char, 260> ch{};
-    char                  DefChar = ' ';
-    WideCharToMultiByte(CP_ACP, 0, wcharStr, -1, ch.data(), 260, &DefChar, nullptr);
-    return ch.data();
+    std::string res;
+    res.reserve(wstr.size());
+    for (wchar_t const c : wstr)
+        res.push_back(static_cast<char>(c)); // TODO Support proper unicode strings
+    return res;
 }
 
-auto GetVideoParameters(IBaseFilter* pCaptureFilter, std::vector<webcam_info::resolution>& list_resolution, webcam_info::pixel_format& pixel_format) -> HRESULT
+static auto get_video_parameters(IBaseFilter* pCaptureFilter) -> std::vector<webcam_info::Resolution>
 {
-    HRESULT    hr        = S_OK;
-    IEnumPins* pEnumPins = nullptr;
-    IPin*      pPin      = nullptr;
+    std::vector<webcam_info::Resolution> available_resolutions;
 
-    // Trouver la première sortie vidéo du filtre d'entrée
-    hr = pCaptureFilter->EnumPins(&pEnumPins);
+    IEnumPins* pEnumPins; // NOLINT(*-init-variables)
+    HRESULT    hr = pCaptureFilter->EnumPins(&pEnumPins);
     if (SUCCEEDED(hr))
     {
+        IPin* pPin; // NOLINT(*-init-variables)
         while (pEnumPins->Next(1, &pPin, nullptr) == S_OK)
         {
-            PIN_DIRECTION pinDirection{};
+            PIN_DIRECTION pinDirection; // NOLINT(*-init-variables)
             pPin->QueryDirection(&pinDirection);
 
             if (pinDirection == PINDIR_OUTPUT)
             {
-                // Obtenir l'interface IAMStreamConfig pour manipuler les paramètres de capture
-                IAMStreamConfig* pStreamConfig = nullptr;
-                hr                             = pPin->QueryInterface(IID_PPV_ARGS(&pStreamConfig));
+                IAMStreamConfig* pStreamConfig; // NOLINT(*-init-variables)
+                hr = pPin->QueryInterface(IID_PPV_ARGS(&pStreamConfig));
                 if (SUCCEEDED(hr))
                 {
-                    int iCount = 0;
-                    int iSize  = 0;
-                    hr         = pStreamConfig->GetNumberOfCapabilities(&iCount, &iSize);
+                    int iCount; // NOLINT(*-init-variables)
+                    int iSize;  // NOLINT(*-init-variables)
+                    hr = pStreamConfig->GetNumberOfCapabilities(&iCount, &iSize);
                     if (SUCCEEDED(hr))
                     {
-                        // Obtenir les capacités de capture (résolutions)
                         VIDEO_STREAM_CONFIG_CAPS caps;
                         for (int i = 0; i < iCount; i++)
                         {
-                            AM_MEDIA_TYPE* pmtConfig{};
-                            hr = pStreamConfig->GetStreamCaps(i, &pmtConfig, reinterpret_cast<BYTE*>(&caps));
+                            AM_MEDIA_TYPE* pmtConfig;                                                         // NOLINT(*-init-variables)
+                            hr = pStreamConfig->GetStreamCaps(i, &pmtConfig, reinterpret_cast<BYTE*>(&caps)); // NOLINT(*-pro-type-reinterpret-cast)
                             if (SUCCEEDED(hr))
                             {
                                 if (pmtConfig->formattype == FORMAT_VideoInfo)
                                 {
-                                    auto* pVih = reinterpret_cast<VIDEOINFOHEADER*>(pmtConfig->pbFormat);
-                                    list_resolution.push_back({pVih->bmiHeader.biWidth, pVih->bmiHeader.biHeight});
+                                    auto* pVih = reinterpret_cast<VIDEOINFOHEADER*>(pmtConfig->pbFormat); // NOLINT(*-pro-type-reinterpret-cast)
+                                    available_resolutions.push_back({pVih->bmiHeader.biWidth, pVih->bmiHeader.biHeight});
                                 }
-                                if (pmtConfig->subtype == MEDIASUBTYPE_YUY2)
-                                    pixel_format = webcam_info::pixel_format::yuyv;
-                                else if (pmtConfig->subtype == MEDIASUBTYPE_MJPG)
-                                    pixel_format = webcam_info::pixel_format::mjpeg;
-                                else
-                                    pixel_format = webcam_info::pixel_format::unknown;
                             }
                         }
                     }
                     pStreamConfig->Release();
                 }
-                pPin->Release();
-                break;
             }
             pPin->Release();
         }
         pEnumPins->Release();
     }
 
-    return hr;
+    return available_resolutions;
 }
 
-auto get_devices_info(IEnumMoniker* pEnum) -> std::vector<webcam_info::info>
+static auto get_devices_info(IEnumMoniker* pEnum) -> std::vector<webcam_info::Info>
 {
-    std::vector<webcam_info::info> list_webcam_info{};
-    IMoniker*                      pMoniker = nullptr;
+    std::vector<webcam_info::Info> list_webcam_info{};
 
+    IMoniker* pMoniker; // NOLINT(*-init-variables)
     while (pEnum->Next(1, &pMoniker, nullptr) == S_OK)
     {
-        std::vector<webcam_info::resolution> list_resolution{};
-        webcam_info::pixel_format            pixel_format{};
-
-        IPropertyBag* pPropBag = nullptr;
-        HRESULT       hr       = pMoniker->BindToStorage(nullptr, nullptr, IID_PPV_ARGS(&pPropBag));
+        IPropertyBag* pPropBag; // NOLINT(*-init-variables)
+        HRESULT       hr = pMoniker->BindToStorage(nullptr, nullptr, IID_PPV_ARGS(&pPropBag));
         if (FAILED(hr))
         {
             pMoniker->Release();
             continue;
         }
 
-        VARIANT var;
-        VariantInit(&var);
-
         // Get description or friendly name.
-        hr = pPropBag->Read(L"Description", &var, 0);
+        VARIANT webcam_name;
+        VariantInit(&webcam_name);
+        hr = pPropBag->Read(L"Description", &webcam_name, nullptr);
         if (FAILED(hr))
         {
-            hr = pPropBag->Read(L"FriendlyName", &var, 0);
+            hr = pPropBag->Read(L"FriendlyName", &webcam_name, nullptr);
         }
         if (SUCCEEDED(hr))
         {
-            IBaseFilter* pCaptureFilter = nullptr;
-            hr                          = pMoniker->BindToObject(nullptr, nullptr, IID_PPV_ARGS(&pCaptureFilter));
+            IBaseFilter* pCaptureFilter; // NOLINT(*-init-variables)
+            hr = pMoniker->BindToObject(nullptr, nullptr, IID_PPV_ARGS(&pCaptureFilter));
             if (SUCCEEDED(hr))
             {
-                hr = GetVideoParameters(pCaptureFilter, list_resolution, pixel_format);
+                std::vector<webcam_info::Resolution> available_resolutions = get_video_parameters(pCaptureFilter);
                 pCaptureFilter->Release();
 
-                if (SUCCEEDED(hr))
+                if (!available_resolutions.empty())
                 {
-                    list_webcam_info.push_back(webcam_info::info{ConvertWCharToString(var.bstrVal), list_resolution, pixel_format});
+                    list_webcam_info.push_back({convert_wstr_to_str(webcam_name.bstrVal), available_resolutions});
                 }
-
-                // printf("%S\n", var.bstrVal);
-
-                VariantClear(&var);
             }
-
-            hr = pPropBag->Write(L"FriendlyName", &var);
-
-            pPropBag->Release();
-            pMoniker->Release();
         }
+        VariantClear(&webcam_name);
+        pPropBag->Release();
+        pMoniker->Release();
     }
+
     return list_webcam_info;
 }
 
-auto EnumerateDevices(REFGUID category, IEnumMoniker** ppEnum) -> HRESULT
+static auto enumerate_devices(REFGUID category, IEnumMoniker** ppEnum) -> HRESULT
 {
     // Create the System Device Enumerator.
-    ICreateDevEnum* pDevEnum;
+    ICreateDevEnum* pDevEnum; // NOLINT(*-init-variables)
     HRESULT         hr = CoCreateInstance(CLSID_SystemDeviceEnum, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pDevEnum));
 
     if (SUCCEEDED(hr))
@@ -172,18 +156,18 @@ auto EnumerateDevices(REFGUID category, IEnumMoniker** ppEnum) -> HRESULT
         }
         pDevEnum->Release();
     }
+
     return hr;
 }
 
-auto webcam_info::get_all_webcams() -> std::vector<info>
+static auto webcam_info::grab_all_webcams_infos_impl() -> std::vector<Info>
 {
-    std::vector<info> list_webcam_info{};
+    std::vector<Info> list_webcam_info{};
     HRESULT           hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     if (SUCCEEDED(hr))
     {
-        IEnumMoniker* pEnum = nullptr;
-
-        hr = EnumerateDevices(CLSID_VideoInputDeviceCategory, &pEnum);
+        IEnumMoniker* pEnum; // NOLINT(*-init-variables)
+        hr = enumerate_devices(CLSID_VideoInputDeviceCategory, &pEnum);
         if (SUCCEEDED(hr))
         {
             list_webcam_info = get_devices_info(pEnum);
@@ -211,7 +195,7 @@ auto webcam_info::get_all_webcams() -> std::vector<info>
 #include <algorithm>
 #include <cstdio>
 
-auto webcam_info::get_all_webcams() -> std::vector<info>
+static auto webcam_info::grab_all_webcams_infos_impl() -> std::vector<info>
 {
     std::vector<info> list_webcam_info{};
 
@@ -245,7 +229,7 @@ auto webcam_info::get_all_webcams() -> std::vector<info>
         char deviceName[256];
         strcpy(deviceName, (char*)cap.card);
 
-        std::vector<webcam_info::resolution> list_resolution{};
+        std::vector<webcam_info::resolution> available_resolutions{};
         pixel_format                         format{};
 
         v4l2_fmtdesc formatDescription{};
@@ -271,7 +255,7 @@ auto webcam_info::get_all_webcams() -> std::vector<info>
                         // float fps = 1.0f * static_cast<float>(frameInterval.discrete.denominator) / static_cast<float>(frameInterval.discrete.numerator);
                         if (/*fps > 29. &&*/ frameSize.type == V4L2_FRMSIZE_TYPE_DISCRETE)
                         {
-                            list_resolution.push_back({width, height});
+                            available_resolutions.push_back({width, height});
                             std::string format_name(reinterpret_cast<char*>(formatDescription.description), 32);
 
                             if (format_name.find("Motion-JPEG") != std::string::npos)
@@ -292,7 +276,7 @@ auto webcam_info::get_all_webcams() -> std::vector<info>
         }
         if (width <= 0 || height <= 0)
             continue;
-        list_webcam_info.push_back(info{std::string(deviceName), list_resolution, format});
+        list_webcam_info.push_back(info{std::string(deviceName), available_resolutions, format});
     }
     return list_webcam_info;
 }

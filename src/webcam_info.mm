@@ -7,21 +7,8 @@
 
 namespace webcam_info {
 
-// enum class pixel_format { unknown, yuyv, mjpeg };
-
-// struct info {
-//   info(const std::string &name, int width, int height,
-//        pixel_format format = pixel_format::unknown)
-//       : name(name), width(width), height(height), format(format){};
-
-//   std::string name{};
-//   int width{};
-//   int height{};
-//   pixel_format format{pixel_format::unknown};
-// };
-
-auto get_all_webcams() -> std::vector<info> {
-  std::vector<info> list_webcams_infos{};
+static auto grab_all_webcams_infos_impl() -> std::vector<Info> {
+  std::vector<Info> list_webcams_infos{};
 
   AVCaptureDeviceDiscoverySession *discoverySession =
       [AVCaptureDeviceDiscoverySession

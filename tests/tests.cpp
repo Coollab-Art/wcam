@@ -2,27 +2,20 @@
 #include <webcam_info/webcam_info.hpp>
 #include "imgui.h"
 
-// Learn how to use Dear ImGui: https://coollibs.github.io/contribute/Programming/dear-imgui
-
-auto main(int argc, char* argv[]) -> int
+auto main() -> int
 {
-    const bool should_run_imgui_tests = argc < 2 || strcmp(argv[1], "-nogpu") != 0;
-    if (
-        should_run_imgui_tests
-    )
-    {
-        quick_imgui::loop("webcam_info tests", []() { // Open a window and run all the ImGui-related code
-            ImGui::Begin("webcam_info tests");
-            auto list_webcam_info = webcam_info::get_all_webcams();
-            for (auto& info : list_webcam_info)
-            {
-                ImGui::Text("%s \n", info.name.c_str());
-                ImGui::Text("    width : %d / height : %d \n", info.width, info.height);
-                ImGui::Text("         format :  %s \n\n", webcam_info::to_string(info.format).c_str());
-            }
+    quick_imgui::loop("webcam_info tests", []() { // Open a window and run all the ImGui-related code
+        ImGui::Begin("webcam_info tests");
 
-            ImGui::End();
-            ImGui::ShowDemoWindow();
-        });
-    }
+        auto const webcam_infos = webcam_info::grab_all_webcams_infos();
+        for (auto const& info : webcam_infos)
+        {
+            if (ImGui::CollapsingHeader(info.name.c_str(), ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                for (auto const& resolution : info.available_resolutions)
+                    ImGui::Text("width : %d / height : %d", resolution.width, resolution.height);
+            }
+        }
+        ImGui::End();
+    });
 }
