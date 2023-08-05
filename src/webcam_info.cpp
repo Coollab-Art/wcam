@@ -39,7 +39,7 @@ auto ConvertWCharToString(const wchar_t* wcharStr) -> std::string
     return ch.data();
 }
 
-auto GetVideoParameters(IBaseFilter* pCaptureFilter, std::vector<webcam_info::resolution> list_resolution, webcam_info::pixel_format& pixel_format) -> HRESULT
+auto GetVideoParameters(IBaseFilter* pCaptureFilter, std::vector<webcam_info::resolution>& list_resolution, webcam_info::pixel_format& pixel_format) -> HRESULT
 {
     HRESULT    hr        = S_OK;
     IEnumPins* pEnumPins = nullptr;
