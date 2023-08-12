@@ -17,11 +17,15 @@ auto grab_all_webcams_infos_impl() -> std::vector<Info> {
             mediaType:AVMediaTypeVideo
             position:AVCaptureDevicePositionUnspecified];
 
+    if (!discoverySession) {
+        return list_webcams_infos;
+    }
+
     NSArray *devices = discoverySession.devices;
 
     for (AVCaptureDevice *device in devices) {
         @autoreleasepool {
-            std::string deviceName = [device.localizedName UTF8String];
+            std::string deviceName = [[device localizedName] UTF8String];
             std::vector<webcam_info::Resolution> list_resolution{};
 
             for (AVCaptureDeviceFormat *format in device.formats) {
