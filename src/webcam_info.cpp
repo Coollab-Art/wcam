@@ -173,7 +173,7 @@ static auto enumerate_devices(REFGUID category, IEnumMoniker** ppEnum) -> HRESUL
     return hr;
 }
 
-auto webcam_info::grab_all_webcams_infos_impl() -> std::vector<Info>
+auto grab_all_webcams_infos_impl() -> std::vector<Info>
 {
     std::vector<Info> list_webcam_info{};
     HRESULT           hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);

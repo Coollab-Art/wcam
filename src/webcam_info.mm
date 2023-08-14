@@ -14,13 +14,7 @@ auto grab_all_webcams_infos_impl() -> std::vector<Info> {
         AVCaptureDeviceDiscoverySession *discoverySession =
             [AVCaptureDeviceDiscoverySession
                 discoverySessionWithDeviceTypes:@[
-                    AVCaptureDeviceTypeBuiltInWideAngleCamera,
-                    AVCaptureDeviceTypeBuiltInUltraWideCamera,
-                    AVCaptureDeviceTypeBuiltInTelephotoCamera,
-                    AVCaptureDeviceTypeBuiltInDualCamera,
-                    AVCaptureDeviceTypeBuiltInDualWideCamera,
-                    AVCaptureDeviceTypeBuiltInTripleCamera,
-                    AVCaptureDeviceTypeContinuityCamera
+                    AVCaptureDeviceTypeBuiltInWideAngleCamera
                 ]
                 mediaType:AVMediaTypeVideo
                 position:AVCaptureDevicePositionUnspecified];
