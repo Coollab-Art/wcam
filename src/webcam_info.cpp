@@ -30,9 +30,10 @@ auto grab_all_webcams_infos() -> std::vector<Info>
 #endif
 
 #include <dshow.h>
-#include <array>
-#include <clocale>
 #include <cstdlib>
+#include <unordered_map>
+
+namespace webcam_info {
 
 static auto convert_wstr_to_str(std::wstring const& wstr) -> std::string
 {
@@ -43,9 +44,9 @@ static auto convert_wstr_to_str(std::wstring const& wstr) -> std::string
     return res;
 }
 
-static auto get_video_parameters(IBaseFilter* pCaptureFilter) -> std::vector<webcam_info::Resolution>
+static auto get_video_parameters(IBaseFilter* pCaptureFilter) -> std::vector<Resolution>
 {
-    std::vector<webcam_info::Resolution> available_resolutions;
+    std::vector<Resolution> available_resolutions;
 
     IEnumPins* pEnumPins; // NOLINT(*-init-variables)
     HRESULT    hr = pCaptureFilter->EnumPins(&pEnumPins);
@@ -94,9 +95,11 @@ static auto get_video_parameters(IBaseFilter* pCaptureFilter) -> std::vector<web
     return available_resolutions;
 }
 
-static auto get_devices_info(IEnumMoniker* pEnum) -> std::vector<webcam_info::Info>
+static auto get_devices_info(IEnumMoniker* pEnum) -> std::vector<Info>
 {
-    std::vector<webcam_info::Info> list_webcam_info{};
+    thread_local auto resolutions_cache = std::unordered_map<std::string, std::vector<Resolution>>{}; // This cache limits the number of times we will allocate IBaseFilter which seems to leak because of a Windows bug.
+
+    std::vector<Info> list_webcam_info{};
 
     IMoniker* pMoniker; // NOLINT(*-init-variables)
     while (pEnum->Next(1, &pMoniker, nullptr) == S_OK)
@@ -110,29 +113,39 @@ static auto get_devices_info(IEnumMoniker* pEnum) -> std::vector<webcam_info::In
         }
 
         // Get description or friendly name.
-        VARIANT webcam_name;
-        VariantInit(&webcam_name);
-        hr = pPropBag->Read(L"Description", &webcam_name, nullptr);
+        VARIANT webcam_name_wstr;
+        VariantInit(&webcam_name_wstr);
+        hr = pPropBag->Read(L"Description", &webcam_name_wstr, nullptr);
         if (FAILED(hr))
         {
-            hr = pPropBag->Read(L"FriendlyName", &webcam_name, nullptr);
+            hr = pPropBag->Read(L"FriendlyName", &webcam_name_wstr, nullptr);
         }
         if (SUCCEEDED(hr))
         {
-            IBaseFilter* pCaptureFilter; // NOLINT(*-init-variables)
-            hr = pMoniker->BindToObject(nullptr, nullptr, IID_PPV_ARGS(&pCaptureFilter));
-            if (SUCCEEDED(hr))
+            auto       available_resolutions = std::vector<Resolution>{};
+            auto const webcam_name           = convert_wstr_to_str(webcam_name_wstr.bstrVal);
+            auto const it                    = resolutions_cache.find(webcam_name);
+            if (it != resolutions_cache.end())
             {
-                std::vector<webcam_info::Resolution> available_resolutions = get_video_parameters(pCaptureFilter);
-                pCaptureFilter->Release();
-
-                if (!available_resolutions.empty())
+                available_resolutions = it->second;
+            }
+            else
+            {
+                IBaseFilter* pCaptureFilter; // NOLINT(*-init-variables)
+                hr = pMoniker->BindToObject(nullptr, nullptr, IID_PPV_ARGS(&pCaptureFilter));
+                if (SUCCEEDED(hr))
                 {
-                    list_webcam_info.push_back({convert_wstr_to_str(webcam_name.bstrVal), available_resolutions});
+                    available_resolutions = get_video_parameters(pCaptureFilter);
+                    pCaptureFilter->Release();
                 }
+                resolutions_cache[webcam_name] = available_resolutions;
+            }
+            if (!available_resolutions.empty())
+            {
+                list_webcam_info.push_back({webcam_name, available_resolutions});
             }
         }
-        VariantClear(&webcam_name);
+        VariantClear(&webcam_name_wstr);
         pPropBag->Release();
         pMoniker->Release();
     }
@@ -177,6 +190,8 @@ auto webcam_info::grab_all_webcams_infos_impl() -> std::vector<Info>
     }
     return list_webcam_info;
 }
+
+} // namespace webcam_info
 
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic pop
