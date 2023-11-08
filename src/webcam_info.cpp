@@ -204,6 +204,7 @@ auto grab_all_webcams_infos_impl() -> std::vector<Info>
 #include <fcntl.h>
 #include <linux/videodev2.h>
 #include <sys/ioctl.h>
+#include <unistd.h>
 #include <filesystem>
 
 static auto find_available_resolutions(int const video_device) -> std::vector<webcam_info::Resolution>
