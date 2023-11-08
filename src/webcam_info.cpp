@@ -244,6 +244,21 @@ static auto find_available_resolutions(int const video_device) -> std::vector<we
     return available_resolutions;
 }
 
+class CloseFileAtExit {
+public:
+    explicit CloseFileAtExit(int file_descriptor)
+        : _file_descriptor{file_descriptor}
+    {}
+
+    ~CloseFileAtExit()
+    {
+        close(_file_descriptor);
+    }
+
+private:
+    int _file_descriptor{};
+};
+
 auto webcam_info::grab_all_webcams_infos_impl() -> std::vector<Info>
 {
     std::vector<Info> list_webcam_info{};
@@ -256,6 +271,7 @@ auto webcam_info::grab_all_webcams_infos_impl() -> std::vector<Info>
         int const video_device = open(entry.path().c_str(), O_RDONLY);
         if (video_device == -1)
             continue;
+        auto const scope_guard = CloseFileAtExit{video_device};
 
         v4l2_capability cap{};
         if (ioctl(video_device, VIDIOC_QUERYCAP, &cap) == -1)
