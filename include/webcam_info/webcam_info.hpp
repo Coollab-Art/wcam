@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -18,6 +19,23 @@ struct Info {
     std::vector<Resolution> available_resolutions{};
 };
 
+/// format : ordre des pixels,
 auto grab_all_webcams_infos() -> std::vector<Info>;
+
+class Image {
+    std::vector<uint8_t>;
+    Format     format;
+    ColorSpace color_space;
+}
+
+class Webcam {
+public:
+    auto get_current_image() -> Image;
+
+private:
+    int pouet;
+};
+
+auto open_webcam(int index / std::string name) -> Webcam;
 
 } // namespace webcam_info
