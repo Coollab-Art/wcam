@@ -115,11 +115,11 @@ static auto get_devices_info(IEnumMoniker* pEnum) -> std::vector<Info>
         // Get description or friendly name.
         VARIANT webcam_name_wstr;
         VariantInit(&webcam_name_wstr);
-        hr = pPropBag->Read(L"Description", &webcam_name_wstr, nullptr);
-        if (FAILED(hr))
-        {
-            hr = pPropBag->Read(L"FriendlyName", &webcam_name_wstr, nullptr);
-        }
+        // hr = pPropBag->Read(L"Description", &webcam_name_wstr, nullptr);// ?????
+        // if (FAILED(hr))
+        // {
+        hr = pPropBag->Read(L"FriendlyName", &webcam_name_wstr, nullptr);
+        // }
         if (SUCCEEDED(hr))
         {
             auto       available_resolutions = std::vector<Resolution>{};
