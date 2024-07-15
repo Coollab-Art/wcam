@@ -16,6 +16,10 @@ endif()
 file(GLOB_RECURSE SRC_FILES CONFIGURE_DEPENDS src/*.cpp)
 target_sources(webcam_info PRIVATE ${SRC_FILES})
 
+# ---Add img library---
+add_subdirectory(lib/img)
+target_link_libraries(webcam_info PUBLIC img::img)
+
 # ---Set warning level---
 if(MSVC)
     target_compile_options(webcam_info PRIVATE /W4)
