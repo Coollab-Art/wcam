@@ -3,7 +3,7 @@ project(webcam_info-tests)
 
 # ---Create executable---
 add_executable(${PROJECT_NAME} tests.cpp)
-target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_17)
+target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_20)
 
 # ---Set warning level---
 if(MSVC)
@@ -30,7 +30,7 @@ include(FetchContent)
 FetchContent_Declare(
     quick_imgui
     GIT_REPOSITORY https://github.com/CoolLibs/quick_imgui
-    GIT_TAG 1a2c38b9976d81889799fe1fb3e0c993dd787a70
+    GIT_TAG abadef68ea1e9d7b607b7d57566a1f1ac95ec4fa
 )
 FetchContent_MakeAvailable(quick_imgui)
 target_include_directories(webcam_info SYSTEM PRIVATE ${quick_imgui_SOURCE_DIR}/lib) # Give our library access to Dear ImGui
