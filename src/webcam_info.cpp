@@ -1,11 +1,12 @@
 #include <img/img.hpp>
 #define WIN32_LEAN_AND_MEAN
-#include <windows.h>
 #include <dshow.h>
+#include <windows.h>
 #include <iostream>
+
 // #include <conio.h>
-#include "qedit.h"
 #include <webcam_info/webcam_info.hpp>
+#include "qedit.h"
 
 namespace webcam {
 
@@ -50,13 +51,13 @@ namespace webcam {
 std::vector<Info> getWebcamsInfo()
 {
     std::vector<Info> info_list;
-    
+
     // Exemple simplifié. Remplacez par le code réel pour détecter les webcams.
     Info info;
-    info.name = "Webcam Example";
+    info.name      = "Webcam Example";
     info.unique_id = UniqueId("example_id");
     info_list.push_back(info);
-    
+
     // Ajoutez ici le code pour détecter les webcams disponibles et remplir info_list
 
     return info_list;
@@ -169,23 +170,25 @@ static auto convert_wstr_to_str(std::wstring const& wstr) -> std::string
 
 Capture::Capture(UniqueId unique_id, img::Size requested_resolution)
 {
-    HRESULT hr;
-    IEnumMoniker *pEnum = nullptr;
-    IMoniker *pMoniker = nullptr;
-    ICaptureGraphBuilder2 *pBuild = nullptr;
-    IGraphBuilder *pGraph = nullptr;
-    ICreateDevEnum *pDevEnum = nullptr;
-    IBaseFilter *pCap = nullptr;
-    IMediaControl *pControl = nullptr;
-    IVideoWindow *pWindow = nullptr;
+    HRESULT                hr;
+    IEnumMoniker*          pEnum    = nullptr;
+    IMoniker*              pMoniker = nullptr;
+    ICaptureGraphBuilder2* pBuild   = nullptr;
+    IGraphBuilder*         pGraph   = nullptr;
+    ICreateDevEnum*        pDevEnum = nullptr;
+    IBaseFilter*           pCap     = nullptr;
+    IMediaControl*         pControl = nullptr;
+    IVideoWindow*          pWindow  = nullptr;
 
     hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
-    if (FAILED(hr)) {
+    if (FAILED(hr))
+    {
         cout << "Échec de CoInitializeEx!" << endl;
     }
 
     hr = CoCreateInstance(CLSID_CaptureGraphBuilder2, NULL, CLSCTX_INPROC_SERVER, IID_ICaptureGraphBuilder2, (void**)&pBuild);
-    if (FAILED(hr)) {
+    if (FAILED(hr))
+    {
         cout << "Échec de la création de CaptureGraphBuilder2!" << endl;
     }
 
@@ -194,32 +197,37 @@ Capture::Capture(UniqueId unique_id, img::Size requested_resolution)
     // 2. Create the Filter Graph Manager
 
     hr = CoCreateInstance(CLSID_FilterGraph, 0, CLSCTX_INPROC_SERVER, IID_IFilterGraph, (void**)&pGraph);
-    if (FAILED(hr)) {
+    if (FAILED(hr))
+    {
         cout << "Échec de la création de FilterGraph!" << endl;
     }
 
     hr = pBuild->SetFiltergraph(pGraph); // Utilisation de SetFiltergraph
-    if (FAILED(hr)) {
+    if (FAILED(hr))
+    {
         cout << "Échec de l'appel de SetFiltergraph!" << endl;
     }
 
     // Obtenir l'objet Moniker correspondant au périphérique sélectionné
 
     hr = CoCreateInstance(CLSID_SystemDeviceEnum, NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pDevEnum));
-    if (FAILED(hr)) {
+    if (FAILED(hr))
+    {
         cout << "Échec de la création de SystemDeviceEnum!" << endl;
     }
 
     hr = pDevEnum->CreateClassEnumerator(CLSID_VideoInputDeviceCategory, &pEnum, 0);
-    if (hr != S_OK) {
+    if (hr != S_OK)
+    {
         cout << "Échec de la création de l'énumérateur de périphériques ou aucun périphérique trouvé!" << endl;
     }
 
     while (pEnum->Next(1, &pMoniker, NULL) == S_OK)
     {
-        IPropertyBag *pPropBag;
+        IPropertyBag* pPropBag;
         hr = pMoniker->BindToStorage(0, 0, IID_PPV_ARGS(&pPropBag));
-        if (FAILED(hr)) {
+        if (FAILED(hr))
+        {
             pMoniker->Release();
             continue;
         }
@@ -228,7 +236,8 @@ Capture::Capture(UniqueId unique_id, img::Size requested_resolution)
         VariantInit(&var);
 
         hr = pPropBag->Read(L"FriendlyName", &var, 0);
-        if (SUCCEEDED(hr)) {
+        if (SUCCEEDED(hr))
+        {
             if (convert_wstr_to_str(var.bstrVal) == unique_id.getDevicePath())
             {
                 break;
@@ -239,32 +248,37 @@ Capture::Capture(UniqueId unique_id, img::Size requested_resolution)
         pPropBag->Release();
         pMoniker->Release();
     }
+    // TODO tell the moniker which resolution to use
     // Liaison au filtre de capture du périphérique sélectionné
 
     hr = pMoniker->BindToObject(0, 0, IID_IBaseFilter, (void**)&pCap);
-    if (FAILED(hr)) {
+    if (FAILED(hr))
+    {
         cout << "Échec de la liaison à l'objet du périphérique!" << endl;
     }
 
     // 3. Add the Webcam Filter to the Graph
 
     hr = pGraph->AddFilter(pCap, L"CaptureFilter");
-    if (FAILED(hr)) {
+    if (FAILED(hr))
+    {
         cout << "Échec de l'ajout du filtre de capture!" << endl;
     }
 
     // 4. Add and Configure the Sample Grabber
 
-    IBaseFilter *pSampleGrabberFilter = NULL;
-    ISampleGrabber *pSampleGrabber = NULL;
+    IBaseFilter*    pSampleGrabberFilter = NULL;
+    ISampleGrabber* pSampleGrabber       = NULL;
 
-    hr = CoCreateInstance(CLSID_SampleGrabber, NULL, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void **)&pSampleGrabberFilter);
-    if (FAILED(hr)) {
+    hr = CoCreateInstance(CLSID_SampleGrabber, NULL, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)&pSampleGrabberFilter);
+    if (FAILED(hr))
+    {
         std::cout << "3";
     }
 
-    hr = pSampleGrabberFilter->QueryInterface(IID_ISampleGrabber, (void **)&pSampleGrabber);
-    if (FAILED(hr)) {
+    hr = pSampleGrabberFilter->QueryInterface(IID_ISampleGrabber, (void**)&pSampleGrabber);
+    if (FAILED(hr))
+    {
         std::cout << "2";
     }
 
@@ -272,21 +286,23 @@ Capture::Capture(UniqueId unique_id, img::Size requested_resolution)
     AM_MEDIA_TYPE mt;
     ZeroMemory(&mt, sizeof(AM_MEDIA_TYPE));
     mt.majortype = MEDIATYPE_Video;
-    mt.subtype = MEDIASUBTYPE_RGB24; // Or any other format you prefer
+    mt.subtype   = MEDIASUBTYPE_RGB24; // Or any other format you prefer
     pSampleGrabber->SetMediaType(&mt);
     pSampleGrabber->SetOneShot(FALSE);
     pSampleGrabber->SetBufferSamples(TRUE);
 
     // Add the sample grabber to the graph
     hr = pGraph->AddFilter(pSampleGrabberFilter, L"Sample Grabber");
-    if (FAILED(hr)) {
+    if (FAILED(hr))
+    {
         std::cout << "ça marche";
     }
 
     // 5. Render the Stream
 
     hr = pBuild->RenderStream(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, pCap, pSampleGrabberFilter, NULL);
-    if (FAILED(hr)) {
+    if (FAILED(hr))
+    {
         cout << "Échec de la configuration du flux de prévisualisation!" << endl;
     }
 
@@ -294,36 +310,38 @@ Capture::Capture(UniqueId unique_id, img::Size requested_resolution)
 
     AM_MEDIA_TYPE mtGrabbed;
     hr = pSampleGrabber->GetConnectedMediaType(&mtGrabbed);
-    if (FAILED(hr)) {
+    if (FAILED(hr))
+    {
         std::cout << "1";
     }
 
-    VIDEOINFOHEADER *pVih = (VIDEOINFOHEADER*)mtGrabbed.pbFormat;
-    img::Size resolution {
+    VIDEOINFOHEADER* pVih = (VIDEOINFOHEADER*)mtGrabbed.pbFormat;
+    img::Size        resolution{
         static_cast<img::Size::DataType>(pVih->bmiHeader.biWidth),
         static_cast<img::Size::DataType>(pVih->bmiHeader.biHeight),
     };
-    
+
     assert(pVih->bmiHeader.biSizeImage == resolution.width() * resolution.height() * 3);
 
     // 7. Start the Graph
 
     // IMediaControl *pControl = NULL;
-    pGraph->QueryInterface(IID_IMediaControl, (void **)&pControl);
+    pGraph->QueryInterface(IID_IMediaControl, (void**)&pControl);
 
     // 8. Implement ISampleGrabberCB Interface
 
     hr = pControl->Run();
-    if (FAILED(hr)) {
+    if (FAILED(hr))
+    {
         std::cout << "ça marche";
     }
 
     // Create an instance of the callback
-     _sgCallback = SampleGrabberCallback{resolution};
+    _sgCallback = SampleGrabberCallback{resolution};
 
     pSampleGrabber->SetCallback(&_sgCallback, 1);
 
-     MSG msg;
+    MSG msg;
 
     //     while (true) {
     //    if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE) > 0) {
@@ -356,7 +374,7 @@ auto grab_all_infos() -> std::vector<Info>
     return list_webcams_infos;
 }
 
-} // namespace webcam_info
+} // namespace webcam
 
 #if defined(_WIN32)
 
@@ -469,7 +487,8 @@ static auto get_devices_info(IEnumMoniker* pEnum) -> std::vector<Info>
             }
             if (!available_resolutions.empty())
             {
-                list_webcam_info.push_back({webcam_name, UniqueId {webcam_name}, available_resolutions});
+                // TODO use device path instead of friendly name as the UniqueId
+                list_webcam_info.push_back({webcam_name, UniqueId{webcam_name}, available_resolutions});
             }
         }
         VariantClear(&webcam_name_wstr);
@@ -518,7 +537,7 @@ auto grab_all_infos_impl() -> std::vector<Info>
     return list_webcam_info;
 }
 
-} // namespace webcam_info
+} // namespace webcam
 
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic pop
