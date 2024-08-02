@@ -12,6 +12,7 @@
 #include <dshow.h>
 #include <iostream>
 #include "../../src/qedit.h"
+#include <shared_mutex>
 
 namespace webcam
 {
@@ -43,17 +44,24 @@ class SampleGrabberCallback : public ISampleGrabberCB {
             assert(BufferLen == _resolution.width() * _resolution.height() * 3);
             auto buffer = new uint8_t[BufferLen];
             memcpy(buffer, pBuffer, BufferLen * sizeof(uint8_t));
+            {
+            std::unique_lock lock{*_mutex};
             _image = img::Image(_resolution, 3, buffer);
+            }
             return 0;
         }
 
         std::optional<img::Image> image(){
-            return std::move(_image);
+            std::unique_lock lock{*_mutex};
+            auto res =  std::move(_image);
+            _image = std::nullopt;
+            return std::move(res);
         }
 
     private :
         std::optional<img::Image> _image{};
         img::Size _resolution;
+      std::unique_ptr<  std::shared_mutex >_mutex{std::make_unique<std::shared_mutex>()};
     };
 
     class UniqueId

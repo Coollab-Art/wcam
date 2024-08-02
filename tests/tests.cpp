@@ -47,12 +47,16 @@ auto main() -> int
         if (capture != nullptr)
         {
             auto const image = capture->image();
+            static int width;
+            static int height;
             if (image.has_value())
             {
+                width = image->width();
+                height = image->height();
                 glBindTexture(GL_TEXTURE_2D, texture_id);
                 glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, image->width(), image->height(), 0, GL_BGR, GL_UNSIGNED_BYTE, image->data());
-                ImGui::Image(static_cast<ImTextureID>(reinterpret_cast<void*>(static_cast<uint64_t>(texture_id))), ImVec2{850.f * static_cast<float>(image->width()) / static_cast<float>(image->height()), 850.f}, ImVec2(0., 1.), ImVec2(1., 0.)); // NOLINT(performance-no-int-to-ptr, *reinterpret-cast)
             }
+            ImGui::Image(static_cast<ImTextureID>(reinterpret_cast<void*>(static_cast<uint64_t>(texture_id))), ImVec2{850.f * static_cast<float>(width) / static_cast<float>(height), 850.f}, ImVec2(0., 1.), ImVec2(1., 0.)); // NOLINT(performance-no-int-to-ptr, *reinterpret-cast)
         }
         ImGui::End();
     });
