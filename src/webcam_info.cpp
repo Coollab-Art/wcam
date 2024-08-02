@@ -299,8 +299,13 @@ Capture::Capture(UniqueId unique_id, img::Size requested_resolution)
     }
 
     // 5. Render the Stream
+    IBaseFilter *pNullRenderer = NULL;
+    hr = CoCreateInstance(CLSID_NullRenderer, NULL, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)&pNullRenderer);
+    // CHECK_HR(hr);
+    hr = pGraph->AddFilter(pNullRenderer, L"Null Renderer");
+    // CHECK_HR(hr);
 
-    hr = pBuild->RenderStream(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, pCap, pSampleGrabberFilter, NULL);
+    hr = pBuild->RenderStream(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, pCap, pSampleGrabberFilter, pNullRenderer);
     if (FAILED(hr))
     {
         cout << "Échec de la configuration du flux de prévisualisation!" << endl;
