@@ -57,6 +57,8 @@ auto main() -> int
                 glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, image->width(), image->height(), 0, GL_BGR, GL_UNSIGNED_BYTE, image->data());
             }
             ImGui::Image(static_cast<ImTextureID>(reinterpret_cast<void*>(static_cast<uint64_t>(texture_id))), ImVec2{400.f * static_cast<float>(width) / static_cast<float>(height), 400.f}, ImVec2(0., 1.), ImVec2(1., 0.)); // NOLINT(performance-no-int-to-ptr, *reinterpret-cast)
+            if (ImGui::Button("Close Webcam"))
+                capture = nullptr;
         }
         ImGui::End();
     });

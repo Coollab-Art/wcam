@@ -18,6 +18,32 @@ static auto convert_wstr_to_str(std::wstring const& wstr) -> std::string
 }
 using namespace std; // TODO remove
 
+STDMETHODIMP_(ULONG)
+CaptureImpl::AddRef()
+{
+    return InterlockedIncrement(&_ref_count);
+}
+
+STDMETHODIMP_(ULONG)
+CaptureImpl::Release()
+{
+    assert(false);
+    ULONG new_count = InterlockedDecrement(&_ref_count);
+    if (new_count == 0)
+        delete this;
+    return new_count;
+}
+
+STDMETHODIMP CaptureImpl::QueryInterface(REFIID riid, void** ppv)
+{
+    if (riid == IID_ISampleGrabberCB || riid == IID_IUnknown)
+    {
+        *ppv = (void*)this;
+        return NOERROR;
+    }
+    return E_NOINTERFACE;
+}
+
 CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& requested_resolution)
 {
     HRESULT                hr;
@@ -27,7 +53,6 @@ CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& requested_r
     IGraphBuilder*         pGraph   = nullptr;
     ICreateDevEnum*        pDevEnum = nullptr;
     IBaseFilter*           pCap     = nullptr;
-    IMediaControl*         pControl = nullptr;
 
     hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
     if (FAILED(hr))
@@ -185,6 +210,7 @@ CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& requested_r
     // 8. Implement ISampleGrabberCB Interface
 
     hr = pControl->Run();
+
     if (FAILED(hr))
     {
         std::cout << "ça marche";
@@ -206,6 +232,11 @@ CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& requested_r
     // Boucle de message pour la gestion des événements
 
     // Libération des ressources et dé-initialisation de COM
+}
+
+CaptureImpl::~CaptureImpl()
+{
+    pControl->Stop();
 }
 
 #if defined(GCC) || defined(__clang__)

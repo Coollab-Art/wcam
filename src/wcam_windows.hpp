@@ -1,6 +1,6 @@
 #pragma once
 #if defined(_WIN32)
-#include <shared_mutex>
+#include <mutex>
 #include "img/img.hpp"
 #include "internal.hpp"
 #include "qedit.h"
@@ -13,50 +13,42 @@ class CaptureImpl : public ISampleGrabberCB
     , public ICapture {
 public:
     CaptureImpl(UniqueId const& unique_id, img::Size const& resolution);
+    ~CaptureImpl() override;
 
     STDMETHODIMP_(ULONG)
-    AddRef() { return 1; }
+    AddRef() override;
     STDMETHODIMP_(ULONG)
-    Release() { return 2; }
-    STDMETHODIMP QueryInterface(REFIID riid, void** ppv)
-    {
-        if (riid == IID_ISampleGrabberCB || riid == IID_IUnknown)
-        {
-            *ppv = (void*)this;
-            return NOERROR;
-        }
-        return E_NOINTERFACE;
-    }
+    Release() override;
+    STDMETHODIMP QueryInterface(REFIID riid, void** ppv) override;
+    STDMETHODIMP SampleCB(double /* Time */, IMediaSample* /* pSample */) override { return 0; }
 
-    STDMETHODIMP SampleCB(double Time, IMediaSample* pSample)
-    {
-        return 0;
-    }
-
-    STDMETHODIMP BufferCB(double Time, BYTE* pBuffer, long BufferLen)
+    STDMETHODIMP BufferCB(double /* Time */, BYTE* pBuffer, long BufferLen) override
     {
         assert(BufferLen == _resolution.width() * _resolution.height() * 3);
         auto buffer = new uint8_t[BufferLen];
         memcpy(buffer, pBuffer, BufferLen * sizeof(uint8_t));
         {
-            std::unique_lock lock{*_mutex};
+            std::unique_lock lock{_mutex};
             _image = img::Image(_resolution, 3, buffer);
         }
         return 0;
     }
 
-    auto image() -> std::optional<img::Image>
+    auto image() -> std::optional<img::Image> override
     {
-        std::unique_lock lock{*_mutex};
-        auto             res = std::move(_image);
-        _image               = std::nullopt;
+        std::lock_guard lock{_mutex};
+        auto            res = std::move(_image);
+        _image              = std::nullopt;
         return res; // We don't use std::move because it would prevent copy elision
     }
 
 private:
-    std::optional<img::Image>          _image{};
-    img::Size                          _resolution;
-    std::unique_ptr<std::shared_mutex> _mutex{std::make_unique<std::shared_mutex>()};
+    std::optional<img::Image> _image{};
+    img::Size                 _resolution;
+    std::mutex                _mutex{};
+    IMediaControl*            pControl = nullptr;
+
+    ULONG _ref_count{1};
 };
 
 } // namespace wcam::internal
