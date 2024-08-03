@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.11)
-project(webcam_info-tests)
+project(wcam-tests)
 
 # ---Create executable---
 add_executable(${PROJECT_NAME} tests.cpp)
@@ -13,7 +13,7 @@ else()
 endif()
 
 # ---Maybe enable warnings as errors---
-if(WARNINGS_AS_ERRORS_FOR_WEBCAM_INFO)
+if(WARNINGS_AS_ERRORS_FOR_WCAM)
     if(MSVC)
         target_compile_options(${PROJECT_NAME} PRIVATE /WX)
     else()
@@ -22,8 +22,8 @@ if(WARNINGS_AS_ERRORS_FOR_WEBCAM_INFO)
 endif()
 
 # ---Include our library---
-add_subdirectory(.. ${CMAKE_CURRENT_SOURCE_DIR}/build/webcam_info)
-target_link_libraries(${PROJECT_NAME} PRIVATE webcam_info::webcam_info)
+add_subdirectory(.. ${CMAKE_CURRENT_SOURCE_DIR}/build/wcam)
+target_link_libraries(${PROJECT_NAME} PRIVATE wcam::wcam)
 
 # ---Add quick_imgui---
 include(FetchContent)
@@ -33,7 +33,6 @@ FetchContent_Declare(
     GIT_TAG abadef68ea1e9d7b607b7d57566a1f1ac95ec4fa
 )
 FetchContent_MakeAvailable(quick_imgui)
-target_include_directories(webcam_info SYSTEM PRIVATE ${quick_imgui_SOURCE_DIR}/lib) # Give our library access to Dear ImGui
 target_link_libraries(${PROJECT_NAME} PRIVATE quick_imgui::quick_imgui)
 
 # ---Ignore .vscode/settings.json in Git---

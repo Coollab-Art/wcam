@@ -5,10 +5,10 @@
 #include <iostream>
 
 // #include <conio.h>
-#include <webcam_info/webcam_info.hpp>
 #include "qedit.h"
+#include "wcam/wcam.hpp"
 
-namespace webcam {
+namespace wcam {
 
 // Définition de la méthode Capture::image()
 // std::optional<img::Image> Capture::image()
@@ -299,8 +299,8 @@ Capture::Capture(UniqueId unique_id, img::Size requested_resolution)
     }
 
     // 5. Render the Stream
-    IBaseFilter *pNullRenderer = NULL;
-    hr = CoCreateInstance(CLSID_NullRenderer, NULL, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)&pNullRenderer);
+    IBaseFilter* pNullRenderer = NULL;
+    hr                         = CoCreateInstance(CLSID_NullRenderer, NULL, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)&pNullRenderer);
     // CHECK_HR(hr);
     hr = pGraph->AddFilter(pNullRenderer, L"Null Renderer");
     // CHECK_HR(hr);
@@ -358,9 +358,9 @@ Capture::Capture(UniqueId unique_id, img::Size requested_resolution)
 
     // Libération des ressources et dé-initialisation de COM
 }
-} // namespace webcam
+} // namespace wcam
 
-namespace webcam {
+namespace wcam {
 
 auto grab_all_infos_impl() -> std::vector<Info>;
 
@@ -379,7 +379,7 @@ auto grab_all_infos() -> std::vector<Info>
     return list_webcams_infos;
 }
 
-} // namespace webcam
+} // namespace wcam
 
 #if defined(_WIN32)
 
@@ -392,7 +392,7 @@ auto grab_all_infos() -> std::vector<Info>
 #include <cstdlib>
 #include <unordered_map>
 
-namespace webcam {
+namespace wcam {
 
 static auto get_video_parameters(IBaseFilter* pCaptureFilter) -> std::vector<img::Size>
 {
@@ -542,7 +542,7 @@ auto grab_all_infos_impl() -> std::vector<Info>
     return list_webcam_info;
 }
 
-} // namespace webcam
+} // namespace wcam
 
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic pop
