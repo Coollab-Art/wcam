@@ -46,7 +46,8 @@ private:
     std::optional<img::Image> _image{};
     img::Size                 _resolution;
     std::mutex                _mutex{};
-    IMediaControl*            pControl = nullptr;
+
+    IMediaControl* _media_control{};
 
     ULONG _ref_count{1};
 };

@@ -3,18 +3,29 @@
 #include <dshow.h>
 #include <cstdlib>
 #include <iostream>
+#include <string>
 #include <unordered_map>
 #include "wcam/wcam.hpp"
 
 namespace wcam::internal {
 
-static auto convert_wstr_to_str(std::wstring const& wstr) -> std::string
+std::string convert_wstr_to_str(const std::wstring& wstr)
 {
-    std::string res;
-    res.reserve(wstr.size());
-    for (wchar_t const c : wstr)
-        res.push_back(static_cast<char>(c)); // TODO Support proper unicode strings
-    return res;
+    // Determine the size of the resulting string
+    int size_needed = WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), (int)wstr.size(), NULL, 0, NULL, NULL);
+    if (size_needed == 0)
+    {
+        // Handle error
+        return "";
+    }
+
+    // Allocate the necessary buffer
+    std::string strTo(size_needed, 0);
+
+    // Perform the conversion
+    WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), (int)wstr.size(), &strTo[0], size_needed, NULL, NULL);
+
+    return strTo;
 }
 using namespace std; // TODO remove
 
@@ -44,15 +55,36 @@ STDMETHODIMP CaptureImpl::QueryInterface(REFIID riid, void** ppv)
     return E_NOINTERFACE;
 }
 
+template<typename T>
+class AutoRelease {
+public:
+    AutoRelease() = default;
+    AutoRelease(REFCLSID class_id)
+    {
+        HRESULT hr = CoCreateInstance(class_id, NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&_ptr));
+        if (FAILED(hr))
+            cout << "Échec de la création de SystemDeviceEnum!" << endl;
+    }
+
+    ~AutoRelease()
+    {
+        _ptr->Release();
+    }
+
+    auto operator->() -> T* { return _ptr; }
+    auto operator->() const -> T const* { return _ptr; }
+    auto operator*() -> T& { return *_ptr; }
+    auto operator*() const -> T const& { return *_ptr; }
+    operator T*() { return _ptr; } // NOLINT(*explicit*)
+    auto ptr_to_ptr() -> T** { return &_ptr; }
+
+private:
+    T* _ptr{nullptr};
+};
+
 CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& requested_resolution)
 {
-    HRESULT                hr;
-    IEnumMoniker*          pEnum    = nullptr;
-    IMoniker*              pMoniker = nullptr;
-    ICaptureGraphBuilder2* pBuild   = nullptr;
-    IGraphBuilder*         pGraph   = nullptr;
-    ICreateDevEnum*        pDevEnum = nullptr;
-    IBaseFilter*           pCap     = nullptr;
+    HRESULT hr;
 
     hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
     if (FAILED(hr))
@@ -60,49 +92,29 @@ CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& requested_r
         cout << "Échec de CoInitializeEx!" << endl;
     }
 
-    hr = CoCreateInstance(CLSID_CaptureGraphBuilder2, NULL, CLSCTX_INPROC_SERVER, IID_ICaptureGraphBuilder2, (void**)&pBuild);
+    auto pBuild = AutoRelease<ICaptureGraphBuilder2>{CLSID_CaptureGraphBuilder2};
+    auto pGraph = AutoRelease<IGraphBuilder>{CLSID_FilterGraph};
+    hr          = pBuild->SetFiltergraph(pGraph);
     if (FAILED(hr))
-    {
-        cout << "Échec de la création de CaptureGraphBuilder2!" << endl;
-    }
-
-    // Création d'instances COM
-
-    // 2. Create the Filter Graph Manager
-
-    hr = CoCreateInstance(CLSID_FilterGraph, 0, CLSCTX_INPROC_SERVER, IID_IFilterGraph, (void**)&pGraph);
-    if (FAILED(hr))
-    {
-        cout << "Échec de la création de FilterGraph!" << endl;
-    }
-
-    hr = pBuild->SetFiltergraph(pGraph); // Utilisation de SetFiltergraph
-    if (FAILED(hr))
-    {
         cout << "Échec de l'appel de SetFiltergraph!" << endl;
-    }
 
     // Obtenir l'objet Moniker correspondant au périphérique sélectionné
+    AutoRelease<ICreateDevEnum> pDevEnum{CLSID_SystemDeviceEnum};
 
-    hr = CoCreateInstance(CLSID_SystemDeviceEnum, NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pDevEnum));
-    if (FAILED(hr))
-    {
-        cout << "Échec de la création de SystemDeviceEnum!" << endl;
-    }
-
-    hr = pDevEnum->CreateClassEnumerator(CLSID_VideoInputDeviceCategory, &pEnum, 0);
+    auto pEnum = AutoRelease<IEnumMoniker>{};
+    hr         = pDevEnum->CreateClassEnumerator(CLSID_VideoInputDeviceCategory, pEnum.ptr_to_ptr(), 0);
     if (hr != S_OK)
     {
         cout << "Échec de la création de l'énumérateur de périphériques ou aucun périphérique trouvé!" << endl;
     }
 
-    while (pEnum->Next(1, &pMoniker, NULL) == S_OK)
+    auto pMoniker = AutoRelease<IMoniker>{};
+    while (pEnum->Next(1, pMoniker.ptr_to_ptr(), NULL) == S_OK)
     {
-        IPropertyBag* pPropBag;
-        hr = pMoniker->BindToStorage(0, 0, IID_PPV_ARGS(&pPropBag));
+        auto pPropBag = AutoRelease<IPropertyBag>{};
+        hr            = pMoniker->BindToStorage(0, 0, IID_PPV_ARGS(pPropBag.ptr_to_ptr()));
         if (FAILED(hr))
         {
-            pMoniker->Release();
             continue;
         }
 
@@ -118,14 +130,12 @@ CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& requested_r
             }
             VariantClear(&var);
         }
-
-        pPropBag->Release();
-        pMoniker->Release();
     }
     // TODO tell the moniker which resolution to use
     // Liaison au filtre de capture du périphérique sélectionné
 
-    hr = pMoniker->BindToObject(0, 0, IID_IBaseFilter, (void**)&pCap);
+    IBaseFilter* pCap = nullptr;
+    hr                = pMoniker->BindToObject(0, 0, IID_IBaseFilter, (void**)&pCap);
     if (FAILED(hr))
     {
         cout << "Échec de la liaison à l'objet du périphérique!" << endl;
@@ -205,11 +215,11 @@ CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& requested_r
     // 7. Start the Graph
 
     // IMediaControl *pControl = NULL;
-    pGraph->QueryInterface(IID_IMediaControl, (void**)&pControl);
+    pGraph->QueryInterface(IID_IMediaControl, (void**)&_media_control);
 
     // 8. Implement ISampleGrabberCB Interface
 
-    hr = pControl->Run();
+    hr = _media_control->Run();
 
     if (FAILED(hr))
     {
@@ -220,23 +230,12 @@ CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& requested_r
     // _sgCallback = SampleGrabberCallback{resolution};
 
     pSampleGrabber->SetCallback(this, 1);
-
-    MSG msg;
-
-    //     while (true) {
-    //    if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE) > 0) {
-    //         // DefWindowProc(msg.hwnd, msg.message, msg.wParam, msg.lParam);
-    //     }
-    // }
-
-    // Boucle de message pour la gestion des événements
-
-    // Libération des ressources et dé-initialisation de COM
 }
 
 CaptureImpl::~CaptureImpl()
 {
-    pControl->Stop();
+    _media_control->Stop();
+    _media_control->Release();
 }
 
 #if defined(GCC) || defined(__clang__)
@@ -377,8 +376,12 @@ static auto enumerate_devices(REFGUID category, IEnumMoniker** ppEnum) -> HRESUL
 auto grab_all_infos_impl() -> std::vector<Info>
 {
     std::vector<Info> list_webcam_info{};
-    HRESULT           hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-    if (SUCCEEDED(hr))
+    static bool       b{true};
+    HRESULT           hr;
+    if (b)
+        hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    b = false;
+    // if (SUCCEEDED(hr))
     {
         IEnumMoniker* pEnum; // NOLINT(*-init-variables)
         hr = enumerate_devices(CLSID_VideoInputDeviceCategory, &pEnum);
@@ -387,7 +390,7 @@ auto grab_all_infos_impl() -> std::vector<Info>
             list_webcam_info = get_devices_info(pEnum);
             pEnum->Release();
         }
-        CoUninitialize();
+        // CoUninitialize(); // TODO call this when the lib shuts down
     }
     return list_webcam_info;
 }
