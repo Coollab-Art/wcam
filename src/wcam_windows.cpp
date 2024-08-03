@@ -8,11 +8,13 @@
 #include "wcam/wcam.hpp"
 
 namespace wcam::internal {
+using namespace std; // TODO remove
 
-std::string convert_wstr_to_str(const std::wstring& wstr)
+auto convert_wstr_to_str(BSTR const& wstr) -> std::string
 {
     // Determine the size of the resulting string
-    int size_needed = WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), (int)wstr.size(), NULL, 0, NULL, NULL);
+    auto const wstr_len    = SysStringLen(wstr);
+    int        size_needed = WideCharToMultiByte(CP_UTF8, 0, wstr, wstr_len, NULL, 0, NULL, NULL);
     if (size_needed == 0)
     {
         // Handle error
@@ -23,36 +25,9 @@ std::string convert_wstr_to_str(const std::wstring& wstr)
     std::string strTo(size_needed, 0);
 
     // Perform the conversion
-    WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), (int)wstr.size(), &strTo[0], size_needed, NULL, NULL);
+    WideCharToMultiByte(CP_UTF8, 0, wstr, wstr_len, &strTo[0], size_needed, NULL, NULL);
 
     return strTo;
-}
-using namespace std; // TODO remove
-
-STDMETHODIMP_(ULONG)
-CaptureImpl::AddRef()
-{
-    return InterlockedIncrement(&_ref_count);
-}
-
-STDMETHODIMP_(ULONG)
-CaptureImpl::Release()
-{
-    assert(false);
-    ULONG new_count = InterlockedDecrement(&_ref_count);
-    if (new_count == 0)
-        delete this;
-    return new_count;
-}
-
-STDMETHODIMP CaptureImpl::QueryInterface(REFIID riid, void** ppv)
-{
-    if (riid == IID_ISampleGrabberCB || riid == IID_IUnknown)
-    {
-        *ppv = (void*)this;
-        return NOERROR;
-    }
-    return E_NOINTERFACE;
 }
 
 template<typename T>
@@ -81,6 +56,32 @@ public:
 private:
     T* _ptr{nullptr};
 };
+
+STDMETHODIMP_(ULONG)
+CaptureImpl::AddRef()
+{
+    return InterlockedIncrement(&_ref_count);
+}
+
+STDMETHODIMP_(ULONG)
+CaptureImpl::Release()
+{
+    assert(false);
+    ULONG new_count = InterlockedDecrement(&_ref_count);
+    if (new_count == 0)
+        delete this;
+    return new_count;
+}
+
+STDMETHODIMP CaptureImpl::QueryInterface(REFIID riid, void** ppv)
+{
+    if (riid == IID_ISampleGrabberCB || riid == IID_IUnknown)
+    {
+        *ppv = (void*)this;
+        return NOERROR;
+    }
+    return E_NOINTERFACE;
+}
 
 CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& requested_resolution)
 {
