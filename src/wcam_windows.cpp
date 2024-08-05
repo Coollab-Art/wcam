@@ -11,6 +11,12 @@
 #include <unordered_map>
 #include "wcam/wcam.hpp"
 
+/// NB: we use DirectShow and not MediaFoundation
+/// because OBS Virtual Camera only works with DirectShow
+/// https://github.com/obsproject/obs-studio/issues/8057
+/// Apparently Windows 11 adds this capability (https://medium.com/deelvin-machine-learning/how-does-obs-virtual-camera-plugin-work-on-windows-e92ab8986c4e)
+/// So in a very distant future, when Windows 11 is on 99.999% of the machines, and when OBS implements a MediaFoundation backend and a virtual camera for it, then we can switch to MediaFoundation
+
 namespace wcam::internal {
 using namespace std; // TODO remove
 
@@ -268,22 +274,27 @@ static auto get_video_parameters(IBaseFilter* pCaptureFilter) -> std::vector<img
     return available_resolutions;
 }
 
-static auto get_devices_info(IEnumMoniker* pEnum) -> std::vector<Info>
+auto grab_all_infos_impl() -> std::vector<Info>
 {
+    CoInitializeIFN();
+
+    auto pDevEnum = AutoRelease<ICreateDevEnum>{CLSID_SystemDeviceEnum};
+    auto pEnum    = AutoRelease<IEnumMoniker>{};
+    THROW_IF_ERR(pDevEnum->CreateClassEnumerator(CLSID_VideoInputDeviceCategory, pEnum.ptr_to_ptr(), 0));
+    if (pEnum == nullptr) // Might still be nullptr after CreateClassEnumerator if the VideoInputDevice category is empty or missing (https://learn.microsoft.com/en-us/previous-versions/ms784969(v=vs.85))
+        return {};
+
     thread_local auto resolutions_cache = std::unordered_map<std::string, std::vector<img::Size>>{}; // This cache limits the number of times we will allocate IBaseFilter which seems to leak because of a Windows bug.
 
-    std::vector<Info> list_webcam_info{};
+    auto infos = std::vector<Info>{};
 
-    IMoniker* pMoniker; // NOLINT(*-init-variables)
-    while (pEnum->Next(1, &pMoniker, nullptr) == S_OK)
+    while (true)
     {
-        IPropertyBag* pPropBag; // NOLINT(*-init-variables)
-        HRESULT       hr = pMoniker->BindToStorage(nullptr, nullptr, IID_PPV_ARGS(&pPropBag));
-        if (FAILED(hr))
-        {
-            pMoniker->Release();
-            continue;
-        }
+        auto pMoniker = AutoRelease<IMoniker>{};
+        if (pEnum->Next(1, pMoniker.ptr_to_ptr(), nullptr) != S_OK)
+            break;
+        auto pPropBag = AutoRelease<IPropertyBag>{};
+        THROW_IF_ERR(pMoniker->BindToStorage(nullptr, nullptr, IID_PPV_ARGS(pPropBag.ptr_to_ptr()))); // TODO should we continue the loop if there is an error here ?
 
         // Get description or friendly name.
         VARIANT webcam_name_wstr;
@@ -291,7 +302,7 @@ static auto get_devices_info(IEnumMoniker* pEnum) -> std::vector<Info>
         // hr = pPropBag->Read(L"Description", &webcam_name_wstr, nullptr);//  TODO ?????
         // if (FAILED(hr))
         // {
-        hr = pPropBag->Read(L"FriendlyName", &webcam_name_wstr, nullptr);
+        HRESULT hr = pPropBag->Read(L"FriendlyName", &webcam_name_wstr, nullptr); // TODO what happens if friendly name is missing ?
         // }
         if (SUCCEEDED(hr))
         {
@@ -312,54 +323,17 @@ static auto get_devices_info(IEnumMoniker* pEnum) -> std::vector<Info>
             if (!available_resolutions.empty())
             {
                 // TODO use device path instead of friendly name as the UniqueId
-                list_webcam_info.push_back({webcam_name, UniqueId{webcam_name}, available_resolutions});
+                infos.push_back({webcam_name, UniqueId{webcam_name}, available_resolutions});
             }
         }
+        else
+        {
+            throw 0;
+        }
         VariantClear(&webcam_name_wstr);
-        pPropBag->Release();
-        pMoniker->Release();
     }
 
-    return list_webcam_info;
-}
-
-static auto enumerate_devices(REFGUID category, IEnumMoniker** ppEnum) -> HRESULT
-{
-    // Create the System Device Enumerator.
-    ICreateDevEnum* pDevEnum; // NOLINT(*-init-variables)
-    HRESULT         hr = CoCreateInstance(CLSID_SystemDeviceEnum, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pDevEnum));
-
-    if (SUCCEEDED(hr))
-    {
-        // Create an enumerator for the category.
-        hr = pDevEnum->CreateClassEnumerator(category, ppEnum, 0);
-        if (hr == S_FALSE)
-        {
-            hr = VFW_E_NOT_FOUND; // The category is empty. Treat as an error.
-        }
-        pDevEnum->Release();
-    }
-
-    return hr;
-}
-
-auto grab_all_infos_impl() -> std::vector<Info>
-{
-    CoInitializeIFN();
-
-    std::vector<Info> list_webcam_info{};
-    HRESULT           hr;
-    // if (SUCCEEDED(hr))
-    {
-        IEnumMoniker* pEnum; // NOLINT(*-init-variables)
-        hr = enumerate_devices(CLSID_VideoInputDeviceCategory, &pEnum);
-        if (SUCCEEDED(hr))
-        {
-            list_webcam_info = get_devices_info(pEnum);
-            pEnum->Release();
-        }
-    }
-    return list_webcam_info;
+    return infos;
 }
 
 } // namespace wcam::internal
