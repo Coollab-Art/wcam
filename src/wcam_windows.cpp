@@ -98,6 +98,15 @@ private:
     T* _ptr{nullptr};
 };
 
+static void CoInitializeIFN()
+{
+    struct Raii { // NOLINT(*special-member-functions)
+        Raii() { THROW_IF_ERR(CoInitializeEx(nullptr, COINIT_MULTITHREADED)); }
+        ~Raii() { CoUninitialize(); }
+    };
+    thread_local Raii instance{}; // Each thread needs to call CoInitializeEx once
+}
+
 STDMETHODIMP_(ULONG)
 CaptureImpl::AddRef()
 {
@@ -122,7 +131,7 @@ STDMETHODIMP CaptureImpl::QueryInterface(REFIID riid, void** ppv)
 
 CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& requested_resolution)
 {
-    THROW_IF_ERR(CoInitializeEx(NULL, COINIT_MULTITHREADED));
+    CoInitializeIFN();
 
     auto pBuild = AutoRelease<ICaptureGraphBuilder2>{CLSID_CaptureGraphBuilder2};
     auto pGraph = AutoRelease<IGraphBuilder>{CLSID_FilterGraph};
@@ -355,12 +364,10 @@ static auto enumerate_devices(REFGUID category, IEnumMoniker** ppEnum) -> HRESUL
 
 auto grab_all_infos_impl() -> std::vector<Info>
 {
+    CoInitializeIFN();
+
     std::vector<Info> list_webcam_info{};
-    static bool       b{true};
     HRESULT           hr;
-    if (b)
-        hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-    b = false;
     // if (SUCCEEDED(hr))
     {
         IEnumMoniker* pEnum; // NOLINT(*-init-variables)
@@ -370,7 +377,6 @@ auto grab_all_infos_impl() -> std::vector<Info>
             list_webcam_info = get_devices_info(pEnum);
             pEnum->Release();
         }
-        // CoUninitialize(); // TODO call this when the lib shuts down
     }
     return list_webcam_info;
 }
