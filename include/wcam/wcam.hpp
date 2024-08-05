@@ -30,6 +30,7 @@ auto grab_all_infos() -> std::vector<Info>;
 
 class Capture {
 public:
+    /// Throws a std::runtime_error if the creation of the Capture fails
     Capture(UniqueId const& unique_id, img::Size const& resolution);
 
     /// Returns the latest image that has been captured, or nullopt if this is the same as the image that was retrieved during the previous call to image() (or if no image has been captured yet)

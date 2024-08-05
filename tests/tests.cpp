@@ -1,3 +1,5 @@
+#include <exception>
+#include <iostream>
 #include <quick_imgui/quick_imgui.hpp>
 #include "glad/glad.h"
 #include "imgui.h"
@@ -34,11 +36,20 @@ auto main() -> int
                 for (size_t i{0}; i < info.available_resolutions.size(); i++)
                 {
                     auto const& resolution{info.available_resolutions[i]};
-                    ImGui::Text("width : %d / height : %d", resolution.width(), resolution.height());
+                    ImGui::Text("%d x %d", resolution.width(), resolution.height());
                     ImGui::PushID(i);
                     if (ImGui::Button("Open webcam"))
                     {
-                        capture = std::make_unique<wcam::Capture>(info.unique_id, resolution);
+                        try
+                        {
+                            capture = std::make_unique<wcam::Capture>(info.unique_id, resolution);
+                        }
+                        catch (std::exception const& e)
+                        {
+                            std::cerr << "Exception occurred: " << e.what() << '\n';
+                            capture = nullptr;
+                            throw;
+                        }
                     }
                     ImGui::PopID();
                 }

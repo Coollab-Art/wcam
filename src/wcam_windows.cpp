@@ -2,8 +2,12 @@
 #include "wcam_windows.hpp"
 #include <dshow.h>
 #include <cstdlib>
+#include <format>
 #include <iostream>
+#include <source_location>
+#include <stdexcept>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include "wcam/wcam.hpp"
 
@@ -29,15 +33,48 @@ auto convert_wstr_to_str(BSTR const& wstr) -> std::string
     return res;
 }
 
+static auto hr2err(HRESULT hr) -> std::string
+{
+    char* error_message{nullptr};
+    FormatMessage(
+        FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+        nullptr,
+        hr,
+        MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US),
+        reinterpret_cast<LPSTR>(&error_message), // NOLINT(*reinterpret-cast)
+        0,
+        nullptr
+    );
+    auto message = std::string{error_message};
+    LocalFree(error_message);
+    return message;
+}
+
+static void throw_error(HRESULT hr, std::string_view code_that_failed, std::source_location location = std::source_location::current())
+{
+    throw std::runtime_error{std::format("{}(During `{}`, at {}({}:{}))", hr2err(hr), code_that_failed, location.file_name(), location.line(), location.column())};
+}
+
+#define THROW_IF_ERR(exp) /*NOLINT(*macro*)*/ \
+    {                                         \
+        HRESULT hr = exp;                     \
+        if (FAILED(hr))                       \
+            throw_error(hr, #exp);            \
+    }
+#define THROW_IF_ERR2(exp, location) /*NOLINT(*macro*)*/ \
+    {                                                    \
+        HRESULT hr = exp;                                \
+        if (FAILED(hr))                                  \
+            throw_error(hr, #exp, location);             \
+    }
+
 template<typename T>
 class AutoRelease {
 public:
     AutoRelease() = default;
-    explicit AutoRelease(REFCLSID class_id)
+    explicit AutoRelease(REFCLSID class_id, std::source_location location = std::source_location::current())
     {
-        HRESULT const hr = CoCreateInstance(class_id, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&_ptr));
-        if (FAILED(hr))
-            cout << "Échec de la création de SystemDeviceEnum!" << endl;
+        THROW_IF_ERR2(CoCreateInstance(class_id, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&_ptr)), location);
     }
 
     ~AutoRelease()
@@ -81,7 +118,7 @@ STDMETHODIMP CaptureImpl::QueryInterface(REFIID riid, void** ppv)
 {
     if (riid == IID_ISampleGrabberCB || riid == IID_IUnknown)
     {
-        *ppv = (void*)this;
+        *ppv = reinterpret_cast<void*>(this); // NOLINT(*reinterpret-cast*)
         return NOERROR;
     }
     return E_NOINTERFACE;
@@ -89,125 +126,71 @@ STDMETHODIMP CaptureImpl::QueryInterface(REFIID riid, void** ppv)
 
 CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& requested_resolution)
 {
-    HRESULT hr;
-
-    hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
-    if (FAILED(hr))
-    {
-        cout << "Échec de CoInitializeEx!" << endl;
-    }
+    THROW_IF_ERR(CoInitializeEx(NULL, COINIT_MULTITHREADED));
 
     auto pBuild = AutoRelease<ICaptureGraphBuilder2>{CLSID_CaptureGraphBuilder2};
     auto pGraph = AutoRelease<IGraphBuilder>{CLSID_FilterGraph};
-    hr          = pBuild->SetFiltergraph(pGraph);
-    if (FAILED(hr))
-        cout << "Échec de l'appel de SetFiltergraph!" << endl;
+    THROW_IF_ERR(pBuild->SetFiltergraph(pGraph));
 
     // Obtenir l'objet Moniker correspondant au périphérique sélectionné
     AutoRelease<ICreateDevEnum> pDevEnum{CLSID_SystemDeviceEnum};
 
     auto pEnum = AutoRelease<IEnumMoniker>{};
-    hr         = pDevEnum->CreateClassEnumerator(CLSID_VideoInputDeviceCategory, pEnum.ptr_to_ptr(), 0);
-    if (hr != S_OK)
-    {
-        cout << "Échec de la création de l'énumérateur de périphériques ou aucun périphérique trouvé!" << endl;
-    }
+    THROW_IF_ERR(pDevEnum->CreateClassEnumerator(CLSID_VideoInputDeviceCategory, pEnum.ptr_to_ptr(), 0));
 
     auto pMoniker = AutoRelease<IMoniker>{};
     while (pEnum->Next(1, pMoniker.ptr_to_ptr(), NULL) == S_OK)
     {
         auto pPropBag = AutoRelease<IPropertyBag>{};
-        hr            = pMoniker->BindToStorage(0, 0, IID_PPV_ARGS(pPropBag.ptr_to_ptr()));
-        if (FAILED(hr))
-        {
-            continue;
-        }
+        THROW_IF_ERR(pMoniker->BindToStorage(0, 0, IID_PPV_ARGS(pPropBag.ptr_to_ptr()))); // TODO should we continue the loop instead of throwing here ?
 
         VARIANT var;
         VariantInit(&var);
 
-        hr = pPropBag->Read(L"FriendlyName", &var, 0);
-        if (SUCCEEDED(hr))
+        THROW_IF_ERR(pPropBag->Read(L"FriendlyName", &var, 0)); // TODO can this legitimately fail ?
+        if (UniqueId{convert_wstr_to_str(var.bstrVal)} == unique_id)
         {
-            if (UniqueId{convert_wstr_to_str(var.bstrVal)} == unique_id)
-            {
-                break;
-            }
-            VariantClear(&var);
+            break;
         }
+        THROW_IF_ERR(VariantClear(&var)); // TODO memory leak : need to do that before we break // TODO should we throw here ?
     }
     // TODO tell the moniker which resolution to use
     // Liaison au filtre de capture du périphérique sélectionné
 
     IBaseFilter* pCap = nullptr;
-    hr                = pMoniker->BindToObject(0, 0, IID_IBaseFilter, (void**)&pCap);
-    if (FAILED(hr))
-    {
-        cout << "Échec de la liaison à l'objet du périphérique!" << endl;
-    }
+    THROW_IF_ERR(pMoniker->BindToObject(0, 0, IID_IBaseFilter, (void**)&pCap));
 
     // 3. Add the Webcam Filter to the Graph
 
-    hr = pGraph->AddFilter(pCap, L"CaptureFilter");
-    if (FAILED(hr))
-    {
-        cout << "Échec de l'ajout du filtre de capture!" << endl;
-    }
+    THROW_IF_ERR(pGraph->AddFilter(pCap, L"CaptureFilter"));
 
     // 4. Add and Configure the Sample Grabber
 
-    IBaseFilter*    pSampleGrabberFilter = NULL;
-    ISampleGrabber* pSampleGrabber       = NULL;
-
-    hr = CoCreateInstance(CLSID_SampleGrabber, NULL, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)&pSampleGrabberFilter);
-    if (FAILED(hr))
-    {
-        std::cout << "3";
-    }
-
-    hr = pSampleGrabberFilter->QueryInterface(IID_ISampleGrabber, (void**)&pSampleGrabber);
-    if (FAILED(hr))
-    {
-        std::cout << "2";
-    }
+    AutoRelease<IBaseFilter>    pSampleGrabberFilter{CLSID_SampleGrabber};
+    AutoRelease<ISampleGrabber> pSampleGrabber{};
+    THROW_IF_ERR(pSampleGrabberFilter->QueryInterface(IID_ISampleGrabber, (void**)pSampleGrabber.ptr_to_ptr()));
 
     // Configure the sample grabber
     AM_MEDIA_TYPE mt;
     ZeroMemory(&mt, sizeof(AM_MEDIA_TYPE));
     mt.majortype = MEDIATYPE_Video;
     mt.subtype   = MEDIASUBTYPE_RGB24; // Or any other format you prefer
-    pSampleGrabber->SetMediaType(&mt);
-    pSampleGrabber->SetOneShot(FALSE);
-    pSampleGrabber->SetBufferSamples(TRUE);
+    THROW_IF_ERR(pSampleGrabber->SetMediaType(&mt));
+    THROW_IF_ERR(pSampleGrabber->SetOneShot(FALSE));
+    THROW_IF_ERR(pSampleGrabber->SetBufferSamples(TRUE));
 
     // Add the sample grabber to the graph
-    hr = pGraph->AddFilter(pSampleGrabberFilter, L"Sample Grabber");
-    if (FAILED(hr))
-    {
-        std::cout << "ça marche";
-    }
+    THROW_IF_ERR(pGraph->AddFilter(pSampleGrabberFilter, L"Sample Grabber"));
 
     // 5. Render the Stream
-    IBaseFilter* pNullRenderer = NULL;
-    hr                         = CoCreateInstance(CLSID_NullRenderer, NULL, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)&pNullRenderer);
-    // CHECK_HR(hr);
-    hr = pGraph->AddFilter(pNullRenderer, L"Null Renderer");
-    // CHECK_HR(hr);
+    AutoRelease<IBaseFilter> pNullRenderer{CLSID_NullRenderer};
+    THROW_IF_ERR(pGraph->AddFilter(pNullRenderer, L"Null Renderer"));
 
-    hr = pBuild->RenderStream(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, pCap, pSampleGrabberFilter, pNullRenderer);
-    if (FAILED(hr))
-    {
-        cout << "Échec de la configuration du flux de prévisualisation!" << endl;
-    }
-
+    THROW_IF_ERR(pBuild->RenderStream(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, pCap, pSampleGrabberFilter, pNullRenderer));
     // 6. Retrieve the Video Information Header
 
     AM_MEDIA_TYPE mtGrabbed;
-    hr = pSampleGrabber->GetConnectedMediaType(&mtGrabbed);
-    if (FAILED(hr))
-    {
-        std::cout << "1";
-    }
+    THROW_IF_ERR(pSampleGrabber->GetConnectedMediaType(&mtGrabbed));
 
     VIDEOINFOHEADER* pVih = (VIDEOINFOHEADER*)mtGrabbed.pbFormat;
     _resolution           = img::Size{
@@ -220,21 +203,16 @@ CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& requested_r
     // 7. Start the Graph
 
     // IMediaControl *pControl = NULL;
-    pGraph->QueryInterface(IID_IMediaControl, (void**)&_media_control);
+    THROW_IF_ERR(pGraph->QueryInterface(IID_IMediaControl, (void**)&_media_control));
 
     // 8. Implement ISampleGrabberCB Interface
 
-    hr = _media_control->Run();
-
-    if (FAILED(hr))
-    {
-        std::cout << "ça marche";
-    }
+    THROW_IF_ERR(_media_control->Run());
 
     // Create an instance of the callback
     // _sgCallback = SampleGrabberCallback{resolution};
 
-    pSampleGrabber->SetCallback(this, 1);
+    THROW_IF_ERR(pSampleGrabber->SetCallback(this, 1));
 }
 
 CaptureImpl::~CaptureImpl()
@@ -250,6 +228,7 @@ CaptureImpl::~CaptureImpl()
 
 static auto get_video_parameters(IBaseFilter* pCaptureFilter) -> std::vector<img::Size>
 {
+    // TODO use THROW_IF_ERR and AutoRelease
     std::vector<img::Size> available_resolutions;
 
     IEnumPins* pEnumPins; // NOLINT(*-init-variables)
