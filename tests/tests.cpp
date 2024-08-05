@@ -29,15 +29,15 @@ auto main() -> int
         ImGui::Begin("webcam_info tests");
 
         auto const webcam_infos = wcam::grab_all_infos();
+        int        imgui_id{0};
         for (auto const& info : webcam_infos)
         {
             if (ImGui::CollapsingHeader(info.name.c_str(), ImGuiTreeNodeFlags_DefaultOpen))
             {
-                for (size_t i{0}; i < info.available_resolutions.size(); i++)
+                for (auto const& resolution : info.available_resolutions)
                 {
-                    auto const& resolution{info.available_resolutions[i]};
                     ImGui::Text("%d x %d", resolution.width(), resolution.height());
-                    ImGui::PushID(i);
+                    ImGui::PushID(imgui_id++);
                     if (ImGui::Button("Open webcam"))
                     {
                         try
