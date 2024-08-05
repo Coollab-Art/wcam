@@ -32,7 +32,7 @@ auto main() -> int
         int        imgui_id{0};
         for (auto const& info : webcam_infos)
         {
-            if (ImGui::CollapsingHeader(info.name.c_str(), ImGuiTreeNodeFlags_DefaultOpen))
+            if (ImGui::CollapsingHeader(std::format("{} (ID: {})", info.name, info.unique_id.as_string()).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
             {
                 for (auto const& resolution : info.available_resolutions)
                 {
@@ -68,6 +68,7 @@ auto main() -> int
                 glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, image->width(), image->height(), 0, GL_BGR, GL_UNSIGNED_BYTE, image->data());
             }
             ImGui::Image(static_cast<ImTextureID>(reinterpret_cast<void*>(static_cast<uint64_t>(texture_id))), ImVec2{400.f * static_cast<float>(width) / static_cast<float>(height), 400.f}, ImVec2(0., 1.), ImVec2(1., 0.)); // NOLINT(performance-no-int-to-ptr, *reinterpret-cast)
+            ImGui::Text("%d x %d", width, height);
             if (ImGui::Button("Close Webcam"))
                 capture = nullptr;
         }

@@ -173,13 +173,41 @@ auto find_webcam_id(IMoniker* pMoniker) -> UniqueId
     return UniqueId{res};
 }
 
+// Release the format block for a media type.
+
+void FreeMediaType(AM_MEDIA_TYPE& mt)
+{
+    if (mt.cbFormat != 0)
+    {
+        CoTaskMemFree((PVOID)mt.pbFormat);
+        mt.cbFormat = 0;
+        mt.pbFormat = NULL;
+    }
+    if (mt.pUnk != NULL)
+    {
+        // pUnk should not be used.
+        mt.pUnk->Release();
+        mt.pUnk = NULL;
+    }
+}
+
+// Delete a media type structure that was allocated on the heap.
+void DeleteMediaType(AM_MEDIA_TYPE* pmt)
+{
+    if (pmt != NULL)
+    {
+        FreeMediaType(*pmt);
+        CoTaskMemFree(pmt);
+    }
+}
+
 CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& requested_resolution)
 {
     CoInitializeIFN();
 
-    auto pBuild = AutoRelease<ICaptureGraphBuilder2>{CLSID_CaptureGraphBuilder2};
-    auto pGraph = AutoRelease<IGraphBuilder>{CLSID_FilterGraph};
-    THROW_IF_ERR(pBuild->SetFiltergraph(pGraph));
+    auto pBuilder = AutoRelease<ICaptureGraphBuilder2>{CLSID_CaptureGraphBuilder2};
+    auto pGraph   = AutoRelease<IGraphBuilder>{CLSID_FilterGraph};
+    THROW_IF_ERR(pBuilder->SetFiltergraph(pGraph));
 
     // Obtenir l'objet Moniker correspondant au périphérique sélectionné
     AutoRelease<ICreateDevEnum> pDevEnum{CLSID_SystemDeviceEnum};
@@ -193,15 +221,40 @@ CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& requested_r
         if (find_webcam_id(pMoniker) == unique_id)
             break;
     }
-    // TODO tell the moniker which resolution to use
     // Liaison au filtre de capture du périphérique sélectionné
 
     IBaseFilter* pCap = nullptr;
     THROW_IF_ERR(pMoniker->BindToObject(0, 0, IID_IBaseFilter, (void**)&pCap));
-
-    // 3. Add the Webcam Filter to the Graph
-
     THROW_IF_ERR(pGraph->AddFilter(pCap, L"CaptureFilter"));
+
+    IAMStreamConfig* pConfig = NULL;
+    HRESULT          hr      = pBuilder->FindInterface(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, pCap, IID_IAMStreamConfig, (void**)&pConfig);
+    AM_MEDIA_TYPE*   pmt;
+    hr = pConfig->GetFormat(&pmt); // Get the current format
+
+    if (SUCCEEDED(hr))
+    {
+        // VIDEOINFOHEADER structure contains the format details
+        VIDEOINFOHEADER* pVih = (VIDEOINFOHEADER*)pmt->pbFormat;
+
+        // Set desired width and height
+        pVih->bmiHeader.biWidth  = requested_resolution.width();
+        pVih->bmiHeader.biHeight = requested_resolution.height();
+
+        // Set the modified format
+        hr = pConfig->SetFormat(pmt);
+
+        if (FAILED(hr))
+        {
+            // Handle error
+        }
+
+        DeleteMediaType(pmt);
+    }
+    else
+    {
+        // Handle error
+    }
 
     // 4. Add and Configure the Sample Grabber
 
@@ -225,7 +278,7 @@ CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& requested_r
     AutoRelease<IBaseFilter> pNullRenderer{CLSID_NullRenderer};
     THROW_IF_ERR(pGraph->AddFilter(pNullRenderer, L"Null Renderer"));
 
-    THROW_IF_ERR(pBuild->RenderStream(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, pCap, pSampleGrabberFilter, pNullRenderer));
+    THROW_IF_ERR(pBuilder->RenderStream(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, pCap, pSampleGrabberFilter, pNullRenderer));
     // 6. Retrieve the Video Information Header
 
     AM_MEDIA_TYPE mtGrabbed;
