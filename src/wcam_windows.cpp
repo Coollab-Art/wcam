@@ -59,15 +59,15 @@ static void throw_error(HRESULT hr, std::string_view code_that_failed, std::sour
 
 #define THROW_IF_ERR(exp) /*NOLINT(*macro*)*/ \
     {                                         \
-        HRESULT hr = exp;                     \
-        if (FAILED(hr))                       \
-            throw_error(hr, #exp);            \
+        HRESULT hresult = exp;                \
+        if (FAILED(hresult))                  \
+            throw_error(hresult, #exp);       \
     }
 #define THROW_IF_ERR2(exp, location) /*NOLINT(*macro*)*/ \
     {                                                    \
-        HRESULT hr = exp;                                \
-        if (FAILED(hr))                                  \
-            throw_error(hr, #exp, location);             \
+        HRESULT hresult = exp;                           \
+        if (FAILED(hresult))                             \
+            throw_error(hresult, #exp, location);        \
     }
 
 template<typename T>

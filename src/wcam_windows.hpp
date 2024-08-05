@@ -24,7 +24,7 @@ public:
 
     STDMETHODIMP BufferCB(double /* Time */, BYTE* pBuffer, long BufferLen) override
     {
-        assert(BufferLen == _resolution.width() * _resolution.height() * 3);
+        assert(static_cast<img::Size::DataType>(BufferLen) == _resolution.width() * _resolution.height() * 3);
         auto buffer = new uint8_t[BufferLen];
         memcpy(buffer, pBuffer, BufferLen * sizeof(uint8_t));
         {
