@@ -49,7 +49,7 @@ private:
 
     IMediaControl* _media_control{};
 
-    ULONG _ref_count{1};
+    ULONG _ref_count{0};
 };
 
 } // namespace wcam::internal

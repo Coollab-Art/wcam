@@ -107,11 +107,7 @@ CaptureImpl::AddRef()
 STDMETHODIMP_(ULONG)
 CaptureImpl::Release()
 {
-    assert(false);
-    ULONG new_count = InterlockedDecrement(&_ref_count);
-    if (new_count == 0)
-        delete this;
-    return new_count;
+    return InterlockedDecrement(&_ref_count);
 }
 
 STDMETHODIMP CaptureImpl::QueryInterface(REFIID riid, void** ppv)
