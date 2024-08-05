@@ -10,10 +10,9 @@ public:
         : _device_path{std::move(device_path)}
     {}
 
-    friend auto operator==(UniqueId const&, UniqueId const&) -> bool = default;
+    auto as_string() const -> std::string const& { return _device_path; }
 
-    // private:
-    //     auto device_path() const -> std::string const& { return _device_path; }
+    friend auto operator==(UniqueId const&, UniqueId const&) -> bool = default;
 
 private:
     std::string _device_path;

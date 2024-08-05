@@ -3,7 +3,6 @@
 #include <dshow.h>
 #include <cstdlib>
 #include <format>
-#include <iostream>
 #include <source_location>
 #include <stdexcept>
 #include <string>
@@ -26,10 +25,7 @@ auto convert_wstr_to_str(BSTR const& wstr) -> std::string
     // Determine the size of the resulting string
     int const res_len = WideCharToMultiByte(CP_UTF8, 0, wstr, wstr_len, nullptr, 0, nullptr, nullptr);
     if (res_len == 0)
-    {
-        assert(false);
         return "";
-    }
 
     // Allocate the necessary buffer
     auto res = std::string(res_len, 0);
@@ -139,6 +135,44 @@ STDMETHODIMP CaptureImpl::QueryInterface(REFIID riid, void** ppv)
     return E_NOINTERFACE;
 }
 
+auto find_webcam_name(IMoniker* pMoniker) -> std::string
+{
+    auto pPropBag = AutoRelease<IPropertyBag>{};
+    THROW_IF_ERR(pMoniker->BindToStorage(nullptr, nullptr, IID_PPV_ARGS(&pPropBag))); // TODO should we continue the loop if there is an error here ?
+
+    VARIANT webcam_name_wstr;
+    VariantInit(&webcam_name_wstr);
+    HRESULT hr = pPropBag->Read(L"FriendlyName", &webcam_name_wstr, nullptr); // TODO what happens if friendly name is missing ?
+    // if (hr == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND))
+    // {
+    //     hr = pPropBag->Read(L"DevicePath", &webcam_name_wstr, nullptr);
+    // }
+    if (hr == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND))
+    {
+        return "Unnamed webcam";
+    }
+    auto res = convert_wstr_to_str(webcam_name_wstr.bstrVal);
+    THROW_IF_ERR(VariantClear(&webcam_name_wstr)); // TODO should we throw here ? // TODO must clear before the early return above
+    return res;
+}
+
+auto find_webcam_id(IMoniker* pMoniker) -> UniqueId
+{
+    auto pPropBag = AutoRelease<IPropertyBag>{};
+    THROW_IF_ERR(pMoniker->BindToStorage(nullptr, nullptr, IID_PPV_ARGS(&pPropBag)));
+
+    VARIANT webcam_name_wstr;
+    VariantInit(&webcam_name_wstr);
+    HRESULT hr = pPropBag->Read(L"DevicePath", &webcam_name_wstr, nullptr);
+    if (hr == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND))
+    {
+        return UniqueId{find_webcam_name(pMoniker)};
+    }
+    auto res = convert_wstr_to_str(webcam_name_wstr.bstrVal);
+    THROW_IF_ERR(VariantClear(&webcam_name_wstr)); // TODO should we throw here ?
+    return UniqueId{res};
+}
+
 CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& requested_resolution)
 {
     CoInitializeIFN();
@@ -156,18 +190,8 @@ CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& requested_r
     auto pMoniker = AutoRelease<IMoniker>{};
     while (pEnum->Next(1, &pMoniker, NULL) == S_OK)
     {
-        auto pPropBag = AutoRelease<IPropertyBag>{};
-        THROW_IF_ERR(pMoniker->BindToStorage(0, 0, IID_PPV_ARGS(pPropBag.ptr_to_ptr()))); // TODO should we continue the loop instead of throwing here ?
-
-        VARIANT var;
-        VariantInit(&var);
-
-        THROW_IF_ERR(pPropBag->Read(L"FriendlyName", &var, 0)); // TODO can this legitimately fail ?
-        if (UniqueId{convert_wstr_to_str(var.bstrVal)} == unique_id)
-        {
+        if (find_webcam_id(pMoniker) == unique_id)
             break;
-        }
-        THROW_IF_ERR(VariantClear(&var)); // TODO memory leak : need to do that before we break // TODO should we throw here ?
     }
     // TODO tell the moniker which resolution to use
     // Liaison au filtre de capture du périphérique sélectionné
@@ -296,21 +320,12 @@ auto grab_all_infos_impl() -> std::vector<Info>
         auto pMoniker = AutoRelease<IMoniker>{};
         if (pEnum->Next(1, &pMoniker, nullptr) != S_OK)
             break;
-        auto pPropBag = AutoRelease<IPropertyBag>{};
-        THROW_IF_ERR(pMoniker->BindToStorage(nullptr, nullptr, IID_PPV_ARGS(pPropBag.ptr_to_ptr()))); // TODO should we continue the loop if there is an error here ?
 
-        // Get description or friendly name.
-        VARIANT webcam_name_wstr;
-        VariantInit(&webcam_name_wstr);
-        // hr = pPropBag->Read(L"Description", &webcam_name_wstr, nullptr);//  TODO ?????
-        // if (FAILED(hr))
-        // {
-        HRESULT hr = pPropBag->Read(L"FriendlyName", &webcam_name_wstr, nullptr); // TODO what happens if friendly name is missing ?
         // }
-        if (SUCCEEDED(hr))
+        // if (SUCCEEDED(hr))
         {
             auto       available_resolutions = std::vector<img::Size>{};
-            auto const webcam_name           = convert_wstr_to_str(webcam_name_wstr.bstrVal);
+            auto const webcam_name           = find_webcam_name(pMoniker);
             auto const it                    = resolutions_cache.find(webcam_name);
             if (it != resolutions_cache.end())
             {
@@ -325,15 +340,13 @@ auto grab_all_infos_impl() -> std::vector<Info>
             }
             if (!available_resolutions.empty())
             {
-                // TODO use device path instead of friendly name as the UniqueId
-                infos.push_back({webcam_name, UniqueId{webcam_name}, available_resolutions});
+                infos.push_back({webcam_name, find_webcam_id(pMoniker), available_resolutions});
             }
         }
-        else
-        {
-            throw 0;
-        }
-        VariantClear(&webcam_name_wstr);
+        // else
+        // {
+        //     throw 0;
+        // }
     }
 
     return infos;
