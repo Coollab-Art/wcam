@@ -99,7 +99,10 @@ public:
     auto operator*() -> T& { return *_ptr; }
     auto operator*() const -> T const& { return *_ptr; }
     operator T*() { return _ptr; } // NOLINT(*explicit*)
-    auto ptr_to_ptr() -> T** { return &_ptr; }
+    T** operator&()                // NOLINT(*runtime-operator)
+    {
+        return &_ptr;
+    }
 
 private:
     T* _ptr{nullptr};
@@ -148,10 +151,10 @@ CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& requested_r
     AutoRelease<ICreateDevEnum> pDevEnum{CLSID_SystemDeviceEnum};
 
     auto pEnum = AutoRelease<IEnumMoniker>{};
-    THROW_IF_ERR(pDevEnum->CreateClassEnumerator(CLSID_VideoInputDeviceCategory, pEnum.ptr_to_ptr(), 0));
+    THROW_IF_ERR(pDevEnum->CreateClassEnumerator(CLSID_VideoInputDeviceCategory, &pEnum, 0));
 
     auto pMoniker = AutoRelease<IMoniker>{};
-    while (pEnum->Next(1, pMoniker.ptr_to_ptr(), NULL) == S_OK)
+    while (pEnum->Next(1, &pMoniker, NULL) == S_OK)
     {
         auto pPropBag = AutoRelease<IPropertyBag>{};
         THROW_IF_ERR(pMoniker->BindToStorage(0, 0, IID_PPV_ARGS(pPropBag.ptr_to_ptr()))); // TODO should we continue the loop instead of throwing here ?
@@ -180,7 +183,7 @@ CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& requested_r
 
     AutoRelease<IBaseFilter>    pSampleGrabberFilter{CLSID_SampleGrabber};
     AutoRelease<ISampleGrabber> pSampleGrabber{};
-    THROW_IF_ERR(pSampleGrabberFilter->QueryInterface(IID_ISampleGrabber, (void**)pSampleGrabber.ptr_to_ptr()));
+    THROW_IF_ERR(pSampleGrabberFilter->QueryInterface(IID_ISampleGrabber, (void**)&pSampleGrabber));
 
     // Configure the sample grabber
     AM_MEDIA_TYPE mt;
@@ -243,11 +246,11 @@ static auto get_video_parameters(IBaseFilter* pCaptureFilter) -> std::vector<img
     auto available_resolutions = std::vector<img::Size>{};
 
     auto pEnumPins = AutoRelease<IEnumPins>{};
-    THROW_IF_ERR(pCaptureFilter->EnumPins(pEnumPins.ptr_to_ptr()));
+    THROW_IF_ERR(pCaptureFilter->EnumPins(&pEnumPins));
     while (true)
     {
         auto pPin = AutoRelease<IPin>{}; // Declare pPin inside the loop so that it is freed at the end, Next doesn't Release the pin that you pass
-        if (pEnumPins->Next(1, pPin.ptr_to_ptr(), nullptr) != S_OK)
+        if (pEnumPins->Next(1, &pPin, nullptr) != S_OK)
             break;
         PIN_DIRECTION pinDirection; // NOLINT(*-init-variables)
         pPin->QueryDirection(&pinDirection);
@@ -255,7 +258,7 @@ static auto get_video_parameters(IBaseFilter* pCaptureFilter) -> std::vector<img
         if (pinDirection != PINDIR_OUTPUT)
             continue;
         AutoRelease<IAMStreamConfig> pStreamConfig; // NOLINT(*-init-variables)
-        THROW_IF_ERR(pPin->QueryInterface(IID_PPV_ARGS(pStreamConfig.ptr_to_ptr())));
+        THROW_IF_ERR(pPin->QueryInterface(IID_PPV_ARGS(&pStreamConfig)));
         int iCount; // NOLINT(*-init-variables)
         int iSize;  // NOLINT(*-init-variables)
         THROW_IF_ERR(pStreamConfig->GetNumberOfCapabilities(&iCount, &iSize));
@@ -280,7 +283,7 @@ auto grab_all_infos_impl() -> std::vector<Info>
 
     auto pDevEnum = AutoRelease<ICreateDevEnum>{CLSID_SystemDeviceEnum};
     auto pEnum    = AutoRelease<IEnumMoniker>{};
-    THROW_IF_ERR(pDevEnum->CreateClassEnumerator(CLSID_VideoInputDeviceCategory, pEnum.ptr_to_ptr(), 0));
+    THROW_IF_ERR(pDevEnum->CreateClassEnumerator(CLSID_VideoInputDeviceCategory, &pEnum, 0));
     if (pEnum == nullptr) // Might still be nullptr after CreateClassEnumerator if the VideoInputDevice category is empty or missing (https://learn.microsoft.com/en-us/previous-versions/ms784969(v=vs.85))
         return {};
 
@@ -291,7 +294,7 @@ auto grab_all_infos_impl() -> std::vector<Info>
     while (true)
     {
         auto pMoniker = AutoRelease<IMoniker>{};
-        if (pEnum->Next(1, pMoniker.ptr_to_ptr(), nullptr) != S_OK)
+        if (pEnum->Next(1, &pMoniker, nullptr) != S_OK)
             break;
         auto pPropBag = AutoRelease<IPropertyBag>{};
         THROW_IF_ERR(pMoniker->BindToStorage(nullptr, nullptr, IID_PPV_ARGS(pPropBag.ptr_to_ptr()))); // TODO should we continue the loop if there is an error here ?
@@ -315,8 +318,8 @@ auto grab_all_infos_impl() -> std::vector<Info>
             }
             else
             {
-                AutoRelease<IBaseFilter> pCaptureFilter; // NOLINT(*-init-variables)
-                THROW_IF_ERR(pMoniker->BindToObject(nullptr, nullptr, IID_PPV_ARGS(pCaptureFilter.ptr_to_ptr())));
+                auto pCaptureFilter = AutoRelease<IBaseFilter>{};
+                THROW_IF_ERR(pMoniker->BindToObject(nullptr, nullptr, IID_PPV_ARGS(&pCaptureFilter)));
                 available_resolutions          = get_video_parameters(pCaptureFilter);
                 resolutions_cache[webcam_name] = available_resolutions;
             }
