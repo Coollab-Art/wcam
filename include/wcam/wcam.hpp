@@ -40,6 +40,4 @@ private:
     std::unique_ptr<internal::ICapture> _pimpl;
 };
 
-std::vector<Info> getWebcamsInfo();
-
 } // namespace wcam

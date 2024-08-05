@@ -79,7 +79,8 @@ public:
 
     ~AutoRelease()
     {
-        _ptr->Release();
+        if (_ptr != nullptr)
+            _ptr->Release();
     }
 
     AutoRelease(AutoRelease const&)                = delete;
@@ -226,58 +227,42 @@ CaptureImpl::~CaptureImpl()
     _media_control->Release();
 }
 
-#if defined(GCC) || defined(__clang__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wlanguage-extension-token"
-#endif
+// #if defined(GCC) || defined(__clang__)
+// #pragma GCC diagnostic push
+// #pragma GCC diagnostic ignored "-Wlanguage-extension-token"
+// #endif
 
 static auto get_video_parameters(IBaseFilter* pCaptureFilter) -> std::vector<img::Size>
 {
-    // TODO use THROW_IF_ERR and AutoRelease
-    std::vector<img::Size> available_resolutions;
+    auto available_resolutions = std::vector<img::Size>{};
 
-    IEnumPins* pEnumPins; // NOLINT(*-init-variables)
-    HRESULT    hr = pCaptureFilter->EnumPins(&pEnumPins);
-    if (SUCCEEDED(hr))
+    auto pEnumPins = AutoRelease<IEnumPins>{};
+    THROW_IF_ERR(pCaptureFilter->EnumPins(pEnumPins.ptr_to_ptr()));
+    while (true)
     {
-        IPin* pPin; // NOLINT(*-init-variables)
-        while (pEnumPins->Next(1, &pPin, nullptr) == S_OK)
-        {
-            PIN_DIRECTION pinDirection; // NOLINT(*-init-variables)
-            pPin->QueryDirection(&pinDirection);
+        auto pPin = AutoRelease<IPin>{}; // Declare pPin inside the loop so that it is freed at the end, Next doesn't Release the pin that you pass
+        if (pEnumPins->Next(1, pPin.ptr_to_ptr(), nullptr) != S_OK)
+            break;
+        PIN_DIRECTION pinDirection; // NOLINT(*-init-variables)
+        pPin->QueryDirection(&pinDirection);
 
-            if (pinDirection == PINDIR_OUTPUT)
-            {
-                IAMStreamConfig* pStreamConfig; // NOLINT(*-init-variables)
-                hr = pPin->QueryInterface(IID_PPV_ARGS(&pStreamConfig));
-                if (SUCCEEDED(hr))
-                {
-                    int iCount; // NOLINT(*-init-variables)
-                    int iSize;  // NOLINT(*-init-variables)
-                    hr = pStreamConfig->GetNumberOfCapabilities(&iCount, &iSize);
-                    if (SUCCEEDED(hr))
-                    {
-                        VIDEO_STREAM_CONFIG_CAPS caps;
-                        for (int i = 0; i < iCount; i++)
-                        {
-                            AM_MEDIA_TYPE* pmtConfig;                                                         // NOLINT(*-init-variables)
-                            hr = pStreamConfig->GetStreamCaps(i, &pmtConfig, reinterpret_cast<BYTE*>(&caps)); // NOLINT(*-pro-type-reinterpret-cast)
-                            if (SUCCEEDED(hr))
-                            {
-                                if (pmtConfig->formattype == FORMAT_VideoInfo)
-                                {
-                                    auto* pVih = reinterpret_cast<VIDEOINFOHEADER*>(pmtConfig->pbFormat); // NOLINT(*-pro-type-reinterpret-cast)
-                                    available_resolutions.push_back({static_cast<img::Size::DataType>(pVih->bmiHeader.biWidth), static_cast<img::Size::DataType>(pVih->bmiHeader.biHeight)});
-                                }
-                            }
-                        }
-                    }
-                    pStreamConfig->Release();
-                }
-            }
-            pPin->Release();
+        if (pinDirection != PINDIR_OUTPUT)
+            continue;
+        AutoRelease<IAMStreamConfig> pStreamConfig; // NOLINT(*-init-variables)
+        THROW_IF_ERR(pPin->QueryInterface(IID_PPV_ARGS(pStreamConfig.ptr_to_ptr())));
+        int iCount; // NOLINT(*-init-variables)
+        int iSize;  // NOLINT(*-init-variables)
+        THROW_IF_ERR(pStreamConfig->GetNumberOfCapabilities(&iCount, &iSize));
+        VIDEO_STREAM_CONFIG_CAPS caps;
+        for (int i = 0; i < iCount; i++)
+        {
+            AM_MEDIA_TYPE* pmtConfig;                                                                  // NOLINT(*-init-variables)
+            THROW_IF_ERR(pStreamConfig->GetStreamCaps(i, &pmtConfig, reinterpret_cast<BYTE*>(&caps))); // NOLINT(*-pro-type-reinterpret-cast)
+            if (pmtConfig->formattype != FORMAT_VideoInfo)
+                continue;
+            auto* pVih = reinterpret_cast<VIDEOINFOHEADER*>(pmtConfig->pbFormat); // NOLINT(*-pro-type-reinterpret-cast)
+            available_resolutions.push_back({static_cast<img::Size::DataType>(pVih->bmiHeader.biWidth), static_cast<img::Size::DataType>(pVih->bmiHeader.biHeight)});
         }
-        pEnumPins->Release();
     }
 
     return available_resolutions;
@@ -303,7 +288,7 @@ static auto get_devices_info(IEnumMoniker* pEnum) -> std::vector<Info>
         // Get description or friendly name.
         VARIANT webcam_name_wstr;
         VariantInit(&webcam_name_wstr);
-        // hr = pPropBag->Read(L"Description", &webcam_name_wstr, nullptr);// ?????
+        // hr = pPropBag->Read(L"Description", &webcam_name_wstr, nullptr);//  TODO ?????
         // if (FAILED(hr))
         // {
         hr = pPropBag->Read(L"FriendlyName", &webcam_name_wstr, nullptr);
@@ -319,13 +304,9 @@ static auto get_devices_info(IEnumMoniker* pEnum) -> std::vector<Info>
             }
             else
             {
-                IBaseFilter* pCaptureFilter; // NOLINT(*-init-variables)
-                hr = pMoniker->BindToObject(nullptr, nullptr, IID_PPV_ARGS(&pCaptureFilter));
-                if (SUCCEEDED(hr))
-                {
-                    available_resolutions = get_video_parameters(pCaptureFilter);
-                    pCaptureFilter->Release();
-                }
+                AutoRelease<IBaseFilter> pCaptureFilter; // NOLINT(*-init-variables)
+                THROW_IF_ERR(pMoniker->BindToObject(nullptr, nullptr, IID_PPV_ARGS(pCaptureFilter.ptr_to_ptr())));
+                available_resolutions          = get_video_parameters(pCaptureFilter);
                 resolutions_cache[webcam_name] = available_resolutions;
             }
             if (!available_resolutions.empty())
@@ -383,8 +364,8 @@ auto grab_all_infos_impl() -> std::vector<Info>
 
 } // namespace wcam::internal
 
-#if defined(__GNUC__) || defined(__clang__)
-#pragma GCC diagnostic pop
-#endif
+// #if defined(__GNUC__) || defined(__clang__)
+// #pragma GCC diagnostic pop
+// #endif
 
 #endif
