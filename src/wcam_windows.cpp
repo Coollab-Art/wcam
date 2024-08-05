@@ -12,31 +12,30 @@ using namespace std; // TODO remove
 
 auto convert_wstr_to_str(BSTR const& wstr) -> std::string
 {
+    int const wstr_len = static_cast<int>(SysStringLen(wstr));
     // Determine the size of the resulting string
-    auto const wstr_len    = SysStringLen(wstr);
-    int        size_needed = WideCharToMultiByte(CP_UTF8, 0, wstr, wstr_len, NULL, 0, NULL, NULL);
-    if (size_needed == 0)
+    int const res_len = WideCharToMultiByte(CP_UTF8, 0, wstr, wstr_len, nullptr, 0, nullptr, nullptr);
+    if (res_len == 0)
     {
-        // Handle error
+        assert(false);
         return "";
     }
 
     // Allocate the necessary buffer
-    std::string strTo(size_needed, 0);
+    auto res = std::string(res_len, 0);
 
     // Perform the conversion
-    WideCharToMultiByte(CP_UTF8, 0, wstr, wstr_len, &strTo[0], size_needed, NULL, NULL);
-
-    return strTo;
+    WideCharToMultiByte(CP_UTF8, 0, wstr, wstr_len, res.data(), res_len, nullptr, nullptr);
+    return res;
 }
 
 template<typename T>
 class AutoRelease {
 public:
     AutoRelease() = default;
-    AutoRelease(REFCLSID class_id)
+    explicit AutoRelease(REFCLSID class_id)
     {
-        HRESULT hr = CoCreateInstance(class_id, NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&_ptr));
+        HRESULT const hr = CoCreateInstance(class_id, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&_ptr));
         if (FAILED(hr))
             cout << "Échec de la création de SystemDeviceEnum!" << endl;
     }
@@ -45,6 +44,11 @@ public:
     {
         _ptr->Release();
     }
+
+    AutoRelease(AutoRelease const&)                = delete;
+    AutoRelease& operator=(AutoRelease const&)     = delete;
+    AutoRelease(AutoRelease&&) noexcept            = delete;
+    AutoRelease& operator=(AutoRelease&&) noexcept = delete;
 
     auto operator->() -> T* { return _ptr; }
     auto operator->() const -> T const* { return _ptr; }
