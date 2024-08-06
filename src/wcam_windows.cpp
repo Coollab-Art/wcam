@@ -175,31 +175,65 @@ auto find_webcam_id(IMoniker* pMoniker) -> UniqueId
 
 // Release the format block for a media type.
 
-void FreeMediaType(AM_MEDIA_TYPE& mt)
-{
-    if (mt.cbFormat != 0)
-    {
-        CoTaskMemFree((PVOID)mt.pbFormat);
-        mt.cbFormat = 0;
-        mt.pbFormat = NULL;
-    }
-    if (mt.pUnk != NULL)
-    {
-        // pUnk should not be used.
-        mt.pUnk->Release();
-        mt.pUnk = NULL;
-    }
-}
-
 // Delete a media type structure that was allocated on the heap.
 void DeleteMediaType(AM_MEDIA_TYPE* pmt)
 {
     if (pmt != NULL)
     {
-        FreeMediaType(*pmt);
+        if (pmt->cbFormat != 0)
+        {
+            CoTaskMemFree((PVOID)pmt->pbFormat);
+            pmt->cbFormat = 0;
+            pmt->pbFormat = NULL;
+        }
+        if (pmt->pUnk != NULL)
+        {
+            // pUnk should not be used.
+            pmt->pUnk->Release();
+            pmt->pUnk = NULL;
+        }
         CoTaskMemFree(pmt);
     }
 }
+
+// HRESULT videoInput::ShowFilterPropertyPages(IBaseFilter* pFilter)
+// {
+//     ISpecifyPropertyPages* pProp;
+
+//     HRESULT hr = pFilter->QueryInterface(IID_ISpecifyPropertyPages, (void**)&pProp);
+//     if (SUCCEEDED(hr))
+//     {
+//         // Get the filter's name and IUnknown pointer.
+//         FILTER_INFO FilterInfo;
+//         hr = pFilter->QueryFilterInfo(&FilterInfo);
+//         IUnknown* pFilterUnk;
+//         pFilter->QueryInterface(IID_IUnknown, (void**)&pFilterUnk);
+
+//         // Show the page.
+//         CAUUID caGUID;
+//         pProp->GetPages(&caGUID);
+//         pProp->Release();
+//         OleCreatePropertyFrame(
+//             NULL,               // Parent window
+//             0, 0,               // Reserved
+//             FilterInfo.achName, // Caption for the dialog box
+//             1,                  // Number of objects (just the filter)
+//             &pFilterUnk,        // Array of object pointers.
+//             caGUID.cElems,      // Number of property pages
+//             caGUID.pElems,      // Array of property page CLSIDs
+//             0,                  // Locale identifier
+//             0, NULL             // Reserved
+//         );
+
+//         // Clean up.
+//         if (pFilterUnk)
+//             pFilterUnk->Release();
+//         if (FilterInfo.pGraph)
+//             FilterInfo.pGraph->Release();
+//         CoTaskMemFree(caGUID.pElems);
+//     }
+//     return hr;
+// }
 
 CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& requested_resolution)
 {
@@ -268,8 +302,8 @@ CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& requested_r
     mt.majortype = MEDIATYPE_Video;
     mt.subtype   = MEDIASUBTYPE_RGB24; // Or any other format you prefer
     THROW_IF_ERR(pSampleGrabber->SetMediaType(&mt));
-    THROW_IF_ERR(pSampleGrabber->SetOneShot(FALSE));
-    THROW_IF_ERR(pSampleGrabber->SetBufferSamples(TRUE));
+    THROW_IF_ERR(pSampleGrabber->SetOneShot(false));
+    THROW_IF_ERR(pSampleGrabber->SetBufferSamples(false));
 
     // Add the sample grabber to the graph
     THROW_IF_ERR(pGraph->AddFilter(pSampleGrabberFilter, L"Sample Grabber"));
@@ -278,8 +312,23 @@ CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& requested_r
     AutoRelease<IBaseFilter> pNullRenderer{CLSID_NullRenderer};
     THROW_IF_ERR(pGraph->AddFilter(pNullRenderer, L"Null Renderer"));
 
-    THROW_IF_ERR(pBuilder->RenderStream(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, pCap, pSampleGrabberFilter, pNullRenderer));
+    THROW_IF_ERR(pBuilder->RenderStream(&PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, pCap, pSampleGrabberFilter, pNullRenderer)); // Check that PIN_CATEGORY_PREVIEW is indeed more performant than PIN_CATEGORY_CAPTURE
     // 6. Retrieve the Video Information Header
+
+    // TODO check if this does anything //EXP - lets try setting the sync source to null - and make it run as fast as possible
+    // {
+    //     IMediaFilter* pMediaFilter = 0;
+    //     hr                         = VD->pGraph->QueryInterface(IID_IMediaFilter, (void**)&pMediaFilter);
+    //     if (FAILED(hr))
+    //     {
+    //         DebugPrintOut("ERROR: Could not get IID_IMediaFilter interface\n");
+    //     }
+    //     else
+    //     {
+    //         pMediaFilter->SetSyncSource(NULL);
+    //         pMediaFilter->Release();
+    //     }
+    // }
 
     AM_MEDIA_TYPE mtGrabbed;
     THROW_IF_ERR(pSampleGrabber->GetConnectedMediaType(&mtGrabbed));
