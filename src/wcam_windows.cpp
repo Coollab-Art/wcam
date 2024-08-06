@@ -297,10 +297,22 @@ CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& requested_r
     THROW_IF_ERR(pSampleGrabberFilter->QueryInterface(IID_ISampleGrabber, (void**)&pSampleGrabber));
 
     // Configure the sample grabber
+    if (unique_id.as_string() == "OBS Virtual Camera"
+        || unique_id.as_string() == "Streamlabs Desktop Virtual Webcam")
+    {
+        // OBS Virtual Camera always returns S_OK on SetFormat(), even if it doesn't support
+        // the actual format. So we have to choose a format that it supports manually, e.g. NV12.
+        // https://github.com/opencv/opencv/issues/19746#issuecomment-1383056787
+        _video_format = MEDIASUBTYPE_NV12;
+    }
+    else
+    {
+        _video_format = MEDIASUBTYPE_RGB24;
+    }
     AM_MEDIA_TYPE mt;
     ZeroMemory(&mt, sizeof(AM_MEDIA_TYPE));
     mt.majortype = MEDIATYPE_Video;
-    mt.subtype   = MEDIASUBTYPE_RGB24; // Or any other format you prefer
+    mt.subtype   = _video_format;
     THROW_IF_ERR(pSampleGrabber->SetMediaType(&mt));
     THROW_IF_ERR(pSampleGrabber->SetOneShot(false));
     THROW_IF_ERR(pSampleGrabber->SetBufferSamples(false));
@@ -339,7 +351,10 @@ CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& requested_r
         static_cast<img::Size::DataType>(pVih->bmiHeader.biHeight),
     };
 
-    assert(pVih->bmiHeader.biSizeImage == _resolution.width() * _resolution.height() * 3);
+    assert(
+        (_video_format == MEDIASUBTYPE_RGB24 && pVih->bmiHeader.biSizeImage == _resolution.width() * _resolution.height() * 3)
+        || (_video_format == MEDIASUBTYPE_NV12 && pVih->bmiHeader.biSizeImage == _resolution.width() * _resolution.height() * 3 / 2)
+    );
 
     // 7. Start the Graph
 
