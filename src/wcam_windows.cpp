@@ -297,8 +297,8 @@ CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& requested_r
     THROW_IF_ERR(pSampleGrabberFilter->QueryInterface(IID_ISampleGrabber, (void**)&pSampleGrabber));
 
     // Configure the sample grabber
-    if (unique_id.as_string() == "OBS Virtual Camera"
-        || unique_id.as_string() == "Streamlabs Desktop Virtual Webcam")
+    if (unique_id.as_string().find("OBS") != std::string::npos
+        || unique_id.as_string().find("Streamlabs") != std::string::npos)
     {
         // OBS Virtual Camera always returns S_OK on SetFormat(), even if it doesn't support
         // the actual format. So we have to choose a format that it supports manually, e.g. NV12.
