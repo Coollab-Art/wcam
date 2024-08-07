@@ -1,5 +1,6 @@
 #pragma once
 #include <img/img.hpp>
+#include "../../src/MaybeImage.hpp"
 #include "../../src/internal.hpp"
 
 namespace wcam {
@@ -33,7 +34,7 @@ public:
     Capture(UniqueId const& unique_id, img::Size const& resolution);
 
     /// Returns the latest image that has been captured, or nullopt if this is the same as the image that was retrieved during the previous call to image() (or if no image has been captured yet)
-    [[nodiscard]] auto image() -> std::optional<img::Image> { return _pimpl->image(); } // We don't use std::move because it would prevent copy elision
+    [[nodiscard]] auto image() -> MaybeImage { return _pimpl->image(); } // We don't use std::move because it would prevent copy elision
 
 private:
     std::unique_ptr<internal::ICapture> _pimpl;

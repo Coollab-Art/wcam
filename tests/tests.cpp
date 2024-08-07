@@ -19,6 +19,11 @@ auto make_texture() -> GLuint
     return textureID;
 }
 
+template<class... Ts>
+struct overloaded : Ts... {
+    using Ts::operator()...;
+};
+
 auto main() -> int
 {
     std::unique_ptr<wcam::Capture> capture;
@@ -67,20 +72,39 @@ auto main() -> int
         }
         if (capture != nullptr)
         {
-            auto const                 image = capture->image();
+            auto const                 maybe_image = capture->image();
             static img::Size::DataType width{};
             static img::Size::DataType height{};
             static bool                flip_y{};
-            if (image.has_value())
+            static std::string         error_msg{};
+            std::visit(
+                overloaded{
+                    [&](img::Image const& image) {
+                        width     = image.width();
+                        height    = image.height();
+                        flip_y    = image.row_order() == img::FirstRowIs::Bottom;
+                        error_msg = "";
+                        glBindTexture(GL_TEXTURE_2D, texture_id);
+                        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, static_cast<GLsizei>(image.width()), static_cast<GLsizei>(image.height()), 0, image.pixel_format() == img::PixelFormat::RGB ? GL_RGB : GL_BGR, GL_UNSIGNED_BYTE, image.data());
+                    },
+                    [](wcam::CaptureError error) {
+                        error_msg = wcam::to_string(error);
+                    },
+                    [](wcam::NoNewImageAvailableYet) {
+                        error_msg = "";
+                    }
+                },
+                maybe_image
+            );
+            if (error_msg.empty())
             {
-                width  = image->width();
-                height = image->height();
-                flip_y = image->row_order() == img::FirstRowIs::Bottom;
-                glBindTexture(GL_TEXTURE_2D, texture_id);
-                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, static_cast<GLsizei>(image->width()), static_cast<GLsizei>(image->height()), 0, image->pixel_format() == img::PixelFormat::RGB ? GL_RGB : GL_BGR, GL_UNSIGNED_BYTE, image->data());
+                ImGui::Image(static_cast<ImTextureID>(reinterpret_cast<void*>(static_cast<uint64_t>(texture_id))), ImVec2{400.f * static_cast<float>(width) / static_cast<float>(height), 400.f}, flip_y ? ImVec2(0., 1.) : ImVec2(0., 0.), flip_y ? ImVec2(1., 0.) : ImVec2(1., 1.)); // NOLINT(performance-no-int-to-ptr, *reinterpret-cast)
+                ImGui::Text("%d x %d", width, height);
             }
-            ImGui::Image(static_cast<ImTextureID>(reinterpret_cast<void*>(static_cast<uint64_t>(texture_id))), ImVec2{400.f * static_cast<float>(width) / static_cast<float>(height), 400.f}, flip_y ? ImVec2(0., 1.) : ImVec2(0., 0.), flip_y ? ImVec2(1., 0.) : ImVec2(1., 1.)); // NOLINT(performance-no-int-to-ptr, *reinterpret-cast)
-            ImGui::Text("%d x %d", width, height);
+            else
+            {
+                ImGui::Text("ERROR: %s", error_msg.c_str());
+            }
             if (ImGui::Button("Close Webcam"))
             {
                 capture = nullptr;

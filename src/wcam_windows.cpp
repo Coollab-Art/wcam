@@ -235,6 +235,29 @@ void DeleteMediaType(AM_MEDIA_TYPE* pmt)
 //     return hr;
 // }
 
+auto CaptureImpl::is_disconnected() -> bool
+{
+    long     evCode;
+    LONG_PTR param1, param2;
+    bool     disconnected = false;
+
+    while (S_OK == _media_event->GetEvent(&evCode, &param1, &param2, 0))
+    {
+        // std::cout << CreateEventCodeMap(evCode) << '\n';
+        if (evCode == EC_DEVICE_LOST)
+        {
+            disconnected = true;
+        }
+        if (evCode == EC_ERRORABORT)
+        {
+            // throw 0;
+            disconnected = true;
+        }
+        _media_event->FreeEventParams(evCode, param1, param2);
+    }
+    return disconnected;
+}
+
 CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& requested_resolution)
 {
     CoInitializeIFN();
@@ -242,6 +265,8 @@ CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& requested_r
     auto pBuilder = AutoRelease<ICaptureGraphBuilder2>{CLSID_CaptureGraphBuilder2};
     auto pGraph   = AutoRelease<IGraphBuilder>{CLSID_FilterGraph};
     THROW_IF_ERR(pBuilder->SetFiltergraph(pGraph));
+
+    THROW_IF_ERR(pGraph->QueryInterface(IID_IMediaEventEx, (void**)&_media_event));
 
     // Obtenir l'objet Moniker correspondant au périphérique sélectionné
     AutoRelease<ICreateDevEnum> pDevEnum{CLSID_SystemDeviceEnum};
@@ -358,23 +383,19 @@ CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& requested_r
 
     // 7. Start the Graph
 
-    // IMediaControl *pControl = NULL;
+    THROW_IF_ERR(pSampleGrabber->SetCallback(this, 1));
     THROW_IF_ERR(pGraph->QueryInterface(IID_IMediaControl, (void**)&_media_control));
-
-    // 8. Implement ISampleGrabberCB Interface
-
     THROW_IF_ERR(_media_control->Run());
 
-    // Create an instance of the callback
-    // _sgCallback = SampleGrabberCallback{resolution};
-
-    THROW_IF_ERR(pSampleGrabber->SetCallback(this, 1));
+    if (is_disconnected())
+        _image = CaptureError::WebcamAlreadyUsedInAnotherApplication;
 }
 
 CaptureImpl::~CaptureImpl()
 {
     _media_control->Stop();
     _media_control->Release();
+    _media_event->Release();
 }
 
 // #if defined(GCC) || defined(__clang__)

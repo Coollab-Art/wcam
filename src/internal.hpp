@@ -1,12 +1,11 @@
 #pragma once
-#include <optional>
-#include "img/img.hpp"
+#include "MaybeImage.hpp"
 
 namespace wcam::internal {
 
 class ICapture {
 public:
-    virtual auto image() -> std::optional<img::Image> = 0;
+    virtual auto image() -> MaybeImage = 0;
 
     ICapture()                                       = default;
     virtual ~ICapture()                              = default;

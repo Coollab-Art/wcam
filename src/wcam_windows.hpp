@@ -1,7 +1,6 @@
 #pragma once
 #if defined(_WIN32)
 #include <mutex>
-#include "img/img.hpp"
 #include "internal.hpp"
 #include "qedit.h"
 #include "wcam/wcam.hpp"
@@ -110,21 +109,28 @@ public:
         return 0;
     }
 
-    auto image() -> std::optional<img::Image> override
+    auto image() -> MaybeImage override
     {
         std::lock_guard lock{_mutex};
-        auto            res = std::move(_image);
-        _image              = std::nullopt;
-        return res; // We don't use std::move because it would prevent copy elision
+
+        auto res = std::move(_image);
+        if (std::holds_alternative<img::Image>(_image))
+            _image = NoNewImageAvailableYet{}; // Make sure we know that the current image has been consumed
+
+        return res; // We don't use std::move here because it would prevent copy elision
     }
 
 private:
-    std::optional<img::Image> _image{};
-    img::Size                 _resolution;
-    GUID                      _video_format; // At the moment we support MEDIASUBTYPE_RGB24 and MEDIASUBTYPE_NV12 (which is required for the OBS virtual camera)
-    std::mutex                _mutex{};
+    auto is_disconnected() -> bool;
+
+private:
+    MaybeImage _image{NoNewImageAvailableYet{}};
+    img::Size  _resolution;
+    GUID       _video_format; // At the moment we support MEDIASUBTYPE_RGB24 and MEDIASUBTYPE_NV12 (which is required for the OBS virtual camera)
+    std::mutex _mutex{};
 
     IMediaControl* _media_control{};
+    IMediaEventEx* _media_event{};
 
     ULONG _ref_count{0};
 };
