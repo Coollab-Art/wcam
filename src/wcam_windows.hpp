@@ -39,9 +39,9 @@ inline void NV12ToRGB24(uint8_t* nv12Data, uint8_t* rgbData, img::Size::DataType
             int G = clamp((298 * C - 100 * D - 208 * E + 128) >> 8);
             int B = clamp((298 * C + 516 * D + 128) >> 8);
 
-            rgbData[(i + (height - 1 - j) * width) * 3 + 0] = (uint8_t)B;
-            rgbData[(i + (height - 1 - j) * width) * 3 + 1] = (uint8_t)G;
-            rgbData[(i + (height - 1 - j) * width) * 3 + 2] = (uint8_t)R;
+            rgbData[(i + j * width) * 3 + 0] = (uint8_t)R;
+            rgbData[(i + j * width) * 3 + 1] = (uint8_t)G;
+            rgbData[(i + j * width) * 3 + 2] = (uint8_t)B;
         }
     }
 }
@@ -85,21 +85,27 @@ public:
 
     STDMETHODIMP BufferCB(double /* Time */, BYTE* pBuffer, long BufferLen) override
     {
-        auto* buffer = new uint8_t[_resolution.width() * _resolution.height() * 3]; // NOLINT(*owning-memory)
+        auto*            buffer = new uint8_t[_resolution.pixels_count() * 3]; // NOLINT(*owning-memory)
+        img::PixelFormat pixel_format;
+        img::FirstRowIs  row_order;
         if (_video_format == MEDIASUBTYPE_RGB24)
         {
-            assert(_resolution.width() * _resolution.height() * 3 == static_cast<img::Size::DataType>(BufferLen));
+            assert(_resolution.pixels_count() * 3 == static_cast<img::Size::DataType>(BufferLen));
             memcpy(buffer, pBuffer, BufferLen * sizeof(uint8_t));
+            pixel_format = img::PixelFormat::BGR;
+            row_order    = img::FirstRowIs::Bottom;
         }
         else
         {
             assert(_video_format == MEDIASUBTYPE_NV12);
-            assert(_resolution.width() * _resolution.height() * 3 / 2 == static_cast<img::Size::DataType>(BufferLen));
+            assert(_resolution.pixels_count() * 3 / 2 == static_cast<img::Size::DataType>(BufferLen));
             NV12ToRGB24(pBuffer, buffer, _resolution.width(), _resolution.height());
+            pixel_format = img::PixelFormat::RGB;
+            row_order    = img::FirstRowIs::Top;
         }
         {
             std::unique_lock lock{_mutex};
-            _image = img::Image{_resolution, 3, buffer};
+            _image = img::Image{_resolution, pixel_format, row_order, buffer};
         }
         return 0;
     }

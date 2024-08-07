@@ -28,6 +28,16 @@ auto main() -> int
             texture_id = make_texture();
         ImGui::Begin("webcam_info tests");
 
+        try
+        {
+            auto const webcam_infos = wcam::grab_all_infos();
+        }
+        catch (std::exception const& e)
+        {
+            std::cerr << "Exception occurred: " << e.what() << '\n';
+            // capture = nullptr;
+            throw;
+        }
         auto const webcam_infos = wcam::grab_all_infos();
         int        imgui_id{0};
         for (auto const& info : webcam_infos)
@@ -57,20 +67,28 @@ auto main() -> int
         }
         if (capture != nullptr)
         {
-            auto const image = capture->image();
-            static int width;
-            static int height;
+            auto const                 image = capture->image();
+            static img::Size::DataType width{};
+            static img::Size::DataType height{};
+            static bool                flip_y{};
             if (image.has_value())
             {
                 width  = image->width();
                 height = image->height();
+                flip_y = image->row_order() == img::FirstRowIs::Bottom;
                 glBindTexture(GL_TEXTURE_2D, texture_id);
-                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, image->width(), image->height(), 0, GL_BGR, GL_UNSIGNED_BYTE, image->data());
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, static_cast<GLsizei>(image->width()), static_cast<GLsizei>(image->height()), 0, image->pixel_format() == img::PixelFormat::RGB ? GL_RGB : GL_BGR, GL_UNSIGNED_BYTE, image->data());
             }
-            ImGui::Image(static_cast<ImTextureID>(reinterpret_cast<void*>(static_cast<uint64_t>(texture_id))), ImVec2{400.f * static_cast<float>(width) / static_cast<float>(height), 400.f}, ImVec2(0., 1.), ImVec2(1., 0.)); // NOLINT(performance-no-int-to-ptr, *reinterpret-cast)
+            ImGui::Image(static_cast<ImTextureID>(reinterpret_cast<void*>(static_cast<uint64_t>(texture_id))), ImVec2{400.f * static_cast<float>(width) / static_cast<float>(height), 400.f}, flip_y ? ImVec2(0., 1.) : ImVec2(0., 0.), flip_y ? ImVec2(1., 0.) : ImVec2(1., 1.)); // NOLINT(performance-no-int-to-ptr, *reinterpret-cast)
             ImGui::Text("%d x %d", width, height);
             if (ImGui::Button("Close Webcam"))
+            {
                 capture = nullptr;
+                // Reset the image, otherwise it will show briefly when opening the next webcam (while the new capture hasn't returned any image yet)
+                width  = 0;
+                height = 0;
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 0, 0, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+            }
         }
         ImGui::End();
     });
