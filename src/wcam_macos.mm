@@ -2,6 +2,12 @@
 #include <CoreMedia/CMFormatDescription.h>
 #include <string>
 #include <vector>
+#include <iostream>
+#include "webcam_info/webcam_info.hpp"
+#include <AVFoundation/AVFoundation.h>
+#include <CoreMedia/CMFormatDescription.h>
+#include <CoreVideo/CVPixelBuffer.h>
+#include <Cocoa/Cocoa.h>
 #include <webcam_info/webcam_info.hpp>
 
 namespace wcam::internal {
@@ -38,12 +44,6 @@ auto grab_all_webcams_infos_impl() -> std::vector<Info> {
     return list_webcams_infos;
 }
 
-#include <iostream>
-#include "webcam_info/webcam_info.hpp"
-#include <AVFoundation/AVFoundation.h>
-#include <CoreMedia/CMFormatDescription.h>
-#include <CoreVideo/CVPixelBuffer.h>
-#include <Cocoa/Cocoa.h>
 
 @interface FrameCaptureDelegate : NSObject<AVCaptureVideoDataOutputSampleBufferDelegate>
 {

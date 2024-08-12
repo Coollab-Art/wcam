@@ -9,8 +9,10 @@ target_compile_features(wcam PUBLIC cxx_std_20)
 # ---Add source files---
 if(WARNINGS_AS_ERRORS_FOR_WCAM)
     target_include_directories(wcam PUBLIC include)
+    target_include_directories(wcam PRIVATE src)
 else()
     target_include_directories(wcam SYSTEM PUBLIC include)
+    target_include_directories(wcam SYSTEM PRIVATE src)
 endif()
 
 file(GLOB_RECURSE SRC_FILES CONFIGURE_DEPENDS src/*.cpp)
