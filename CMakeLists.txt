@@ -9,10 +9,8 @@ target_compile_features(wcam PUBLIC cxx_std_20)
 # ---Add source files---
 if(WARNINGS_AS_ERRORS_FOR_WCAM)
     target_include_directories(wcam PUBLIC include)
-    target_include_directories(wcam PRIVATE src)
 else()
     target_include_directories(wcam SYSTEM PUBLIC include)
-    target_include_directories(wcam SYSTEM PRIVATE src)
 endif()
 
 file(GLOB_RECURSE SRC_FILES CONFIGURE_DEPENDS src/*.cpp)
@@ -42,10 +40,18 @@ endif()
 if(WIN32)
     target_link_libraries(wcam PRIVATE strmiids)
 elseif(APPLE)
-    target_link_libraries(wcam PRIVATE "-framework AVFoundation")
-    target_link_libraries(wcam PRIVATE "-framework CoreMedia")
-
-    # target_link_libraries(wcam PRIVATE "-framework IOKit")
+    find_library(AVFOUNDATION_LIBRARY AVFoundation)
+    find_library(COCOA_LIBRARY Cocoa)
+    find_library(COREMEDIA_LIBRARY CoreMedia)
+    find_library(COREVIDEO_LIBRARY CoreVideo)
+    find_library(COREIMAGE_LIBRARY CoreImage)
+    target_link_libraries(wcam PRIVATE
+        ${AVFOUNDATION_LIBRARY}
+        ${COCOA_LIBRARY}
+        ${COREMEDIA_LIBRARY}
+        ${COREVIDEO_LIBRARY}
+        ${COREIMAGE_LIBRARY}
+    )
     file(GLOB_RECURSE SRC_FILES_MACOS CONFIGURE_DEPENDS src/*.mm)
     target_sources(wcam PRIVATE ${SRC_FILES_MACOS})
 

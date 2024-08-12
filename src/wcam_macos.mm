@@ -3,16 +3,15 @@
 #include <string>
 #include <vector>
 #include <iostream>
-#include "webcam_info/webcam_info.hpp"
 #include <AVFoundation/AVFoundation.h>
 #include <CoreMedia/CMFormatDescription.h>
 #include <CoreVideo/CVPixelBuffer.h>
 #include <Cocoa/Cocoa.h>
-#include <webcam_info/webcam_info.hpp>
+#include <wcam/wcam.hpp>
 
 namespace wcam::internal {
 
-auto grab_all_webcams_infos_impl() -> std::vector<Info> {
+auto grab_all_infos_impl() -> std::vector<Info> {
     std::vector<Info> list_webcams_infos{};
 
     @autoreleasepool
