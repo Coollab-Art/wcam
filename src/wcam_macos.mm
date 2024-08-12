@@ -31,23 +31,24 @@ auto grab_all_infos_impl() -> std::vector<Info> {
 
         for (AVCaptureDevice *device in devices) {
                 std::string deviceName = [[device localizedName] UTF8String];
-                std::vector<webcam_info::Resolution> list_resolution{};
+                std::vector<img::Size> list_resolution{};
 
                 for (AVCaptureDeviceFormat *format in device.formats) {
                     CMVideoDimensions dimensions = CMVideoFormatDescriptionGetDimensions(format.formatDescription);
-                    list_resolution.push_back({dimensions.width, dimensions.height});
+                    list_resolution.push_back({static_cast<img::Size::DataType>(dimensions.width), static_cast<img::Size::DataType>(dimensions.height)});
                 }
-                list_webcams_infos.push_back({deviceName, list_resolution});
+                list_webcams_infos.push_back({deviceName,UniqueId{deviceName}, list_resolution});
         }
     }
     return list_webcams_infos;
 }
 
+}
 
 @interface FrameCaptureDelegate : NSObject<AVCaptureVideoDataOutputSampleBufferDelegate>
 {
 @public
-    std::vector<webcam_info::FrameInfo>* frames;
+    // std::vector<wcam::FrameInfo>* frames;
 }
 @property (nonatomic, strong) NSImageView *imageView;
 @property (nonatomic) CGSize frameSize;
@@ -103,12 +104,12 @@ auto grab_all_infos_impl() -> std::vector<Info> {
     NSInteger width = self.frameSize.width;
     NSInteger height = self.frameSize.height;
 
-    webcam_info::FrameInfo frameInfo;
-    frameInfo.width = (int)width;
-    frameInfo.height = (int)height;
-    frameInfo.yData = yData; // Stocker les données Y
-    frameInfo.cbCrData = cbCrData; // Stocker les données CbCr
-    frames->push_back(frameInfo);
+    // wcam::FrameInfo frameInfo;
+    // frameInfo.width = (int)width;
+    // frameInfo.height = (int)height;
+    // frameInfo.yData = yData; // Stocker les données Y
+    // frameInfo.cbCrData = cbCrData; // Stocker les données CbCr
+    // frames->push_back(frameInfo);
 
     // Debugging: Log the size information
     NSLog(@"Frame width: %ld, height: %ld", (long)width, (long)height);
@@ -148,7 +149,7 @@ auto grab_all_infos_impl() -> std::vector<Info> {
 
     self.frameCaptureDelegate = [[FrameCaptureDelegate alloc] init];
     self.frameCaptureDelegate.imageView = imageView;
-    self.frameCaptureDelegate->frames = new std::vector<webcam_info::FrameInfo>;
+    // self.frameCaptureDelegate->frames = new std::vector<wcam::FrameInfo>;
 
     AVCaptureSession *session = [[AVCaptureSession alloc] init];
     AVCaptureDevice *device = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
@@ -176,6 +177,7 @@ auto grab_all_infos_impl() -> std::vector<Info> {
 
 @end
 
+namespace wcam::internal {
 
 void open_webcam()
 {

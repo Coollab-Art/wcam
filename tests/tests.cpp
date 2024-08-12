@@ -23,6 +23,8 @@ template<class... Ts>
 struct overloaded : Ts... {
     using Ts::operator()...;
 };
+template<class... Ts>
+overloaded(Ts...) -> overloaded<Ts...>;
 
 auto main() -> int
 {
@@ -47,7 +49,7 @@ auto main() -> int
         int        imgui_id{0};
         for (auto const& info : webcam_infos)
         {
-            if (ImGui::CollapsingHeader(std::format("{} (ID: {})", info.name, info.unique_id.as_string()).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
+            if (ImGui::CollapsingHeader((info.name + " (ID: "+info.unique_id.as_string()+")" ).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
             {
                 for (auto const& resolution : info.available_resolutions)
                 {
