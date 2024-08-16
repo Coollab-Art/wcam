@@ -1,7 +1,7 @@
 #pragma once
 #if defined(_WIN32)
 #include <mutex>
-#include "internal.hpp"
+#include "ICapture.hpp"
 #include "qedit.h"
 #include "wcam/wcam.hpp"
 
@@ -49,7 +49,7 @@ EXTERN_C const IID IID_ISampleGrabberCB;
 class CaptureImpl : public ISampleGrabberCB
     , public ICapture {
 public:
-    CaptureImpl(UniqueId const& unique_id, img::Size const& resolution);
+    CaptureImpl(DeviceId const& id, img::Size const& resolution);
     ~CaptureImpl() override;
 
     STDMETHODIMP_(ULONG)

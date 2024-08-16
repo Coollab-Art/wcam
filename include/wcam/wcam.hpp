@@ -1,43 +1,17 @@
 #pragma once
-#include <img/img.hpp>
-#include "../../src/MaybeImage.hpp"
-#include "../../src/internal.hpp"
+#include <vector>
+#include "../../../src/CaptureStrongRef.hpp"
+#include "../../../src/DeviceId.hpp"
+#include "../../../src/Info.hpp"
+#include "../../../src/MaybeImage.hpp"
+#include "img/img.hpp"
 
 namespace wcam {
 
-class UniqueId {
-public:
-    explicit UniqueId(std::string device_path)
-        : _device_path{std::move(device_path)}
-    {}
+/// Returns a list of descriptions of all the cameras that are currently plugged in
+auto all_webcams_info() -> std::vector<Info>;
 
-    auto as_string() const -> std::string const& { return _device_path; }
-
-    friend auto operator==(UniqueId const&, UniqueId const&) -> bool = default;
-
-private:
-    std::string _device_path;
-};
-
-struct Info {
-    std::string            name{}; /// Name that can be displayed in the UI
-    UniqueId               unique_id;
-    std::vector<img::Size> available_resolutions{};
-    // std::vector<std::string> pixel_formats{}; // TODO
-};
-
-auto grab_all_infos() -> std::vector<Info>;
-
-class Capture {
-public:
-    /// Throws a std::runtime_error if the creation of the Capture fails
-    Capture(UniqueId const& unique_id, img::Size const& resolution);
-
-    /// Returns the latest image that has been captured, or nullopt if this is the same as the image that was retrieved during the previous call to image() (or if no image has been captured yet)
-    [[nodiscard]] auto image() -> MaybeImage { return _pimpl->image(); } // We don't use std::move because it would prevent copy elision
-
-private:
-    std::unique_ptr<internal::ICapture> _pimpl;
-};
+/// Starts capturing the requested camera. If it safe to call it an a camera that is already captured, we will just reuse the existing capture.
+auto start_capture(DeviceId const& id, img::Size const& resolution) -> CaptureStrongRef;
 
 } // namespace wcam

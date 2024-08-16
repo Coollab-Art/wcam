@@ -28,16 +28,16 @@ overloaded(Ts...) -> overloaded<Ts...>;
 
 auto main() -> int
 {
-    std::unique_ptr<wcam::Capture> capture;
-    GLuint                         texture_id{0};  // NOLINT(*init-variables)
-    quick_imgui::loop("webcam_info tests", [&]() { // Open a window and run all the ImGui-related code
+    std::optional<wcam::CaptureStrongRef> capture;
+    GLuint                                texture_id{0}; // NOLINT(*init-variables)
+    quick_imgui::loop("webcam_info tests", [&]() {       // Open a window and run all the ImGui-related code
         if (texture_id == 0)
             texture_id = make_texture();
         ImGui::Begin("webcam_info tests");
 
         try
         {
-            auto const webcam_infos = wcam::grab_all_infos();
+            auto const webcam_infos = wcam::all_webcams_info();
         }
         catch (std::exception const& e)
         {
@@ -45,13 +45,13 @@ auto main() -> int
             // capture = nullptr;
             throw;
         }
-        auto const webcam_infos = wcam::grab_all_infos();
+        auto const webcam_infos = wcam::all_webcams_info();
         int        imgui_id{0};
         for (auto const& info : webcam_infos)
         {
-            if (ImGui::CollapsingHeader((info.name + " (ID: "+info.unique_id.as_string()+")" ).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
+            if (ImGui::CollapsingHeader((info.name + " (ID: " + info.id.as_string() + ")").c_str(), ImGuiTreeNodeFlags_DefaultOpen))
             {
-                for (auto const& resolution : info.available_resolutions)
+                for (auto const& resolution : info.resolutions)
                 {
                     ImGui::Text("%d x %d", resolution.width(), resolution.height());
                     ImGui::PushID(imgui_id++);
@@ -59,12 +59,12 @@ auto main() -> int
                     {
                         try
                         {
-                            capture = std::make_unique<wcam::Capture>(info.unique_id, resolution);
+                            capture = wcam::start_capture(info.id, resolution);
                         }
                         catch (std::exception const& e)
                         {
                             std::cerr << "Exception occurred: " << e.what() << '\n';
-                            capture = nullptr;
+                            capture = std::nullopt;
                             throw;
                         }
                     }
@@ -72,7 +72,7 @@ auto main() -> int
                 }
             }
         }
-        if (capture != nullptr)
+        if (capture.has_value())
         {
             auto const                 maybe_image = capture->image();
             static img::Size::DataType width{};
@@ -109,7 +109,7 @@ auto main() -> int
             }
             if (ImGui::Button("Close Webcam"))
             {
-                capture = nullptr;
+                capture = std::nullopt;
                 // Reset the image, otherwise it will show briefly when opening the next webcam (while the new capture hasn't returned any image yet)
                 width  = 0;
                 height = 0;

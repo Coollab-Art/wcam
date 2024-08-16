@@ -1,5 +1,5 @@
+#include "ICapture.hpp"
 #if defined(_WIN32)
-#include "wcam_windows.hpp"
 #include <dshow.h>
 #include <cstdlib>
 #include <format>
@@ -8,7 +8,9 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include "make_device_id.hpp"
 #include "wcam/wcam.hpp"
+#include "wcam_windows.hpp"
 
 /// NB: we use DirectShow and not MediaFoundation
 /// because OBS Virtual Camera only works with DirectShow
@@ -156,7 +158,7 @@ auto find_webcam_name(IMoniker* pMoniker) -> std::string
     return res;
 }
 
-auto find_webcam_id(IMoniker* pMoniker) -> UniqueId
+auto find_webcam_id(IMoniker* pMoniker) -> DeviceId
 {
     auto pPropBag = AutoRelease<IPropertyBag>{};
     THROW_IF_ERR(pMoniker->BindToStorage(nullptr, nullptr, IID_PPV_ARGS(&pPropBag)));
@@ -164,13 +166,13 @@ auto find_webcam_id(IMoniker* pMoniker) -> UniqueId
     VARIANT webcam_name_wstr;
     VariantInit(&webcam_name_wstr);
     HRESULT hr = pPropBag->Read(L"DevicePath", &webcam_name_wstr, nullptr);
-    if (hr == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND))
+    if (hr == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND)) // It can happen, for example OBS Virtual Camera doesn't have a DevicePath
     {
-        return UniqueId{find_webcam_name(pMoniker)};
+        return make_device_id(find_webcam_name(pMoniker));
     }
     auto res = convert_wstr_to_str(webcam_name_wstr.bstrVal);
     THROW_IF_ERR(VariantClear(&webcam_name_wstr)); // TODO should we throw here ?
-    return UniqueId{res};
+    return make_device_id(res);
 }
 
 // Release the format block for a media type.
@@ -302,7 +304,8 @@ auto CaptureImpl::is_disconnected() -> bool
     return disconnected;
 }
 
-CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& requested_resolution)
+CaptureImpl::CaptureImpl(DeviceId const& device_id, img::Size const& requested_resolution)
+    : ICapture{device_id}
 {
     CoInitializeIFN();
 
@@ -321,7 +324,7 @@ CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& requested_r
     auto pMoniker = AutoRelease<IMoniker>{};
     while (pEnum->Next(1, &pMoniker, NULL) == S_OK)
     {
-        if (find_webcam_id(pMoniker) == unique_id)
+        if (find_webcam_id(pMoniker) == device_id)
             break;
         // TODO error if webcam is not found
     }
@@ -367,8 +370,8 @@ CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& requested_r
     THROW_IF_ERR(pSampleGrabberFilter->QueryInterface(IID_ISampleGrabber, (void**)&pSampleGrabber));
 
     // Configure the sample grabber
-    if (unique_id.as_string().find("OBS") != std::string::npos
-        || unique_id.as_string().find("Streamlabs") != std::string::npos)
+    if (device_id.as_string().find("OBS") != std::string::npos
+        || device_id.as_string().find("Streamlabs") != std::string::npos)
     {
         // OBS Virtual Camera always returns S_OK on SetFormat(), even if it doesn't support
         // the actual format. So we have to choose a format that it supports manually, e.g. NV12.
