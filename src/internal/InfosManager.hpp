@@ -9,6 +9,7 @@ public:
     auto infos() -> std::vector<Info>;
 
 private:
+    std::vector<Info> _infos{};
 };
 
 inline auto infos_manager() -> InfosManager&

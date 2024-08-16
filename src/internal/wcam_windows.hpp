@@ -115,7 +115,7 @@ private:
     auto is_disconnected() -> bool;
 
 private:
-    MaybeImage _image{NoNewImageAvailableYet{}};
+    MaybeImage _image{MustClearPreviousImage{}};
     img::Size  _resolution;
     GUID       _video_format; // At the moment we support MEDIASUBTYPE_RGB24 and MEDIASUBTYPE_NV12 (which is required for the OBS virtual camera)
     std::mutex _mutex{};

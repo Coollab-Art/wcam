@@ -18,4 +18,14 @@ auto CapturesManager::start_capture(DeviceId const& id, img::Size const& resolut
     return CaptureStrongRef{_open_captures[id]};
 }
 
+void CapturesManager::on_webcam_plugged_in(DeviceId const& id)
+{
+    // Check for captures that were started with this webcam, then the webcam was unplugged, and then plugged back
+    // We need to restart those captures, otherwise they will remain frozen (at least on Windows, I haven't checked on other OSes)
+    auto const it = _open_captures.find(id);
+    if (it == _open_captures.end())
+        return;
+    it->second = std::make_shared<Capture>(id, img::Size{});
+}
+
 } // namespace wcam::internal

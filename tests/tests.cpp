@@ -94,6 +94,13 @@ auto main() -> int
                     },
                     [](wcam::NoNewImageAvailableYet) {
                         error_msg = "";
+                    },
+                    [](wcam::MustClearPreviousImage) {
+                        error_msg = "";
+                        // Reset the image, otherwise it will show briefly when opening the next webcam (while the new capture hasn't returned any image yet) / when a capture needs to restart because the camera was unplugged and then plugged back
+                        width  = 0;
+                        height = 0;
+                        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 0, 0, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
                     }
                 },
                 maybe_image
@@ -110,10 +117,6 @@ auto main() -> int
             if (ImGui::Button("Close Webcam"))
             {
                 capture = std::nullopt;
-                // Reset the image, otherwise it will show briefly when opening the next webcam (while the new capture hasn't returned any image yet)
-                width  = 0;
-                height = 0;
-                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 0, 0, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
             }
         }
         ImGui::End();

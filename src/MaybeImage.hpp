@@ -13,7 +13,8 @@ enum class CaptureError {
 auto to_string(CaptureError) -> std::string;
 
 struct NoNewImageAvailableYet {};
+struct MustClearPreviousImage {};
 
-using MaybeImage = std::variant<img::Image, NoNewImageAvailableYet, CaptureError>;
+using MaybeImage = std::variant<img::Image, NoNewImageAvailableYet, MustClearPreviousImage, CaptureError>;
 
 } // namespace wcam
