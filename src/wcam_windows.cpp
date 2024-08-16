@@ -235,6 +235,50 @@ void DeleteMediaType(AM_MEDIA_TYPE* pmt)
 //     return hr;
 // }
 
+// auto CreateEventCodeMap(long evCode) -> std::string
+// {
+//     std::map<long, std::string> evCodeMap;
+
+//     evCodeMap[EC_COMPLETE]                  = "EC_COMPLETE";
+//     evCodeMap[EC_USERABORT]                 = "EC_USERABORT";
+//     evCodeMap[EC_ERRORABORT]                = "EC_ERRORABORT";
+//     evCodeMap[EC_TIME]                      = "EC_TIME";
+//     evCodeMap[EC_REPAINT]                   = "EC_REPAINT";
+//     evCodeMap[EC_STREAM_ERROR_STOPPED]      = "EC_STREAM_ERROR_STOPPED";
+//     evCodeMap[EC_STREAM_ERROR_STILLPLAYING] = "EC_STREAM_ERROR_STILLPLAYING";
+//     evCodeMap[EC_ERROR_STILLPLAYING]        = "EC_ERROR_STILLPLAYING";
+//     evCodeMap[EC_PALETTE_CHANGED]           = "EC_PALETTE_CHANGED";
+//     evCodeMap[EC_VIDEO_SIZE_CHANGED]        = "EC_VIDEO_SIZE_CHANGED";
+//     evCodeMap[EC_QUALITY_CHANGE]            = "EC_QUALITY_CHANGE";
+//     evCodeMap[EC_SHUTTING_DOWN]             = "EC_SHUTTING_DOWN";
+//     evCodeMap[EC_CLOCK_CHANGED]             = "EC_CLOCK_CHANGED";
+//     evCodeMap[EC_PAUSED]                    = "EC_PAUSED";
+//     evCodeMap[EC_OPENING_FILE]              = "EC_OPENING_FILE";
+//     evCodeMap[EC_BUFFERING_DATA]            = "EC_BUFFERING_DATA";
+//     evCodeMap[EC_FULLSCREEN_LOST]           = "EC_FULLSCREEN_LOST";
+//     evCodeMap[EC_ACTIVATE]                  = "EC_ACTIVATE";
+//     evCodeMap[EC_NEED_RESTART]              = "EC_NEED_RESTART";
+//     evCodeMap[EC_WINDOW_DESTROYED]          = "EC_WINDOW_DESTROYED";
+//     evCodeMap[EC_DISPLAY_CHANGED]           = "EC_DISPLAY_CHANGED";
+//     evCodeMap[EC_STARVATION]                = "EC_STARVATION";
+//     evCodeMap[EC_OLE_EVENT]                 = "EC_OLE_EVENT";
+//     evCodeMap[EC_NOTIFY_WINDOW]             = "EC_NOTIFY_WINDOW";
+//     evCodeMap[EC_STREAM_CONTROL_STOPPED]    = "EC_STREAM_CONTROL_STOPPED";
+//     evCodeMap[EC_STREAM_CONTROL_STARTED]    = "EC_STREAM_CONTROL_STARTED";
+//     evCodeMap[EC_END_OF_SEGMENT]            = "EC_END_OF_SEGMENT";
+//     evCodeMap[EC_SEGMENT_STARTED]           = "EC_SEGMENT_STARTED";
+//     evCodeMap[EC_LENGTH_CHANGED]            = "EC_LENGTH_CHANGED";
+//     evCodeMap[EC_DEVICE_LOST]               = "EC_DEVICE_LOST";
+
+//     auto it = evCodeMap.find(evCode);
+//     if (it == evCodeMap.end())
+//         throw 0;
+
+//     // Add more event codes as needed
+
+//     return it->second;
+// }
+
 auto CaptureImpl::is_disconnected() -> bool
 {
     long     evCode;
@@ -244,7 +288,7 @@ auto CaptureImpl::is_disconnected() -> bool
     while (S_OK == _media_event->GetEvent(&evCode, &param1, &param2, 0))
     {
         // std::cout << CreateEventCodeMap(evCode) << '\n';
-        if (evCode == EC_DEVICE_LOST)
+        if (evCode == EC_DEVICE_LOST) // TODO distringuish this (CaptureError::WebcamUnplugged) from EC_ERRORABORT (CaptureError::WebcamAlreadyUsedInAnotherApplication)
         {
             disconnected = true;
         }
@@ -279,6 +323,7 @@ CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& requested_r
     {
         if (find_webcam_id(pMoniker) == unique_id)
             break;
+        // TODO error if webcam is not found
     }
     // Liaison au filtre de capture du périphérique sélectionné
 
@@ -389,6 +434,24 @@ CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& requested_r
 
     if (is_disconnected())
         _image = CaptureError::WebcamAlreadyUsedInAnotherApplication;
+}
+
+auto CaptureImpl::image() -> MaybeImage
+{
+    std::lock_guard lock{_mutex};
+
+    // if (std::holds_alternative<CaptureError>(_image))
+    // {
+    //     THROW_IF_ERR(_media_control->Run());
+    //     if (is_disconnected())
+    //         _image = CaptureError::WebcamAlreadyUsedInAnotherApplication;
+    // }
+
+    auto res = std::move(_image);
+    if (std::holds_alternative<img::Image>(_image))
+        _image = NoNewImageAvailableYet{}; // Make sure we know that the current image has been consumed
+
+    return res; // We don't use std::move here because it would prevent copy elision
 }
 
 CaptureImpl::~CaptureImpl()
