@@ -5,7 +5,8 @@ namespace wcam::internal {
 
 void open_webcam();
 
-CaptureImpl::CaptureImpl(UniqueId const& unique_id, img::Size const& resolution)
+CaptureImpl::CaptureImpl(DeviceId const& id, img::Size const& resolution)
+:ICapture{id}
 {
     open_webcam();
 }

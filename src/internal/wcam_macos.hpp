@@ -6,7 +6,7 @@ namespace wcam::internal {
 
 class CaptureImpl : public ICapture {
 public:
-    CaptureImpl(UniqueId const& unique_id, img::Size const& resolution);
+    CaptureImpl(DeviceId const& id, img::Size const& resolution);
     ~CaptureImpl() override;
 
     auto image() -> MaybeImage override

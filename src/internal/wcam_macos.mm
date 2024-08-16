@@ -6,6 +6,7 @@
 #include <AVFoundation/AVFoundation.h>
 #include <CoreMedia/CMFormatDescription.h>
 #include <CoreVideo/CVPixelBuffer.h>
+#include "make_device_id.hpp"
 #include <Cocoa/Cocoa.h>
 #include <wcam/wcam.hpp>
 
@@ -37,7 +38,7 @@ auto grab_all_infos_impl() -> std::vector<Info> {
                     CMVideoDimensions dimensions = CMVideoFormatDescriptionGetDimensions(format.formatDescription);
                     list_resolution.push_back({static_cast<img::Size::DataType>(dimensions.width), static_cast<img::Size::DataType>(dimensions.height)});
                 }
-                list_webcams_infos.push_back({deviceName,UniqueId{deviceName}, list_resolution});
+                list_webcams_infos.push_back({deviceName,make_device_id(deviceName), list_resolution});
         }
     }
     return list_webcams_infos;
@@ -109,7 +110,9 @@ auto grab_all_infos_impl() -> std::vector<Info> {
     // frameInfo.height = (int)height;
     // frameInfo.yData = yData; // Stocker les données Y
     // frameInfo.cbCrData = cbCrData; // Stocker les données CbCr
+    // @synchronized(self) {
     // frames->push_back(frameInfo);
+    // }
 
     // Debugging: Log the size information
     NSLog(@"Frame width: %ld, height: %ld", (long)width, (long)height);
