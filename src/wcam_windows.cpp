@@ -448,7 +448,7 @@ auto CaptureImpl::image() -> MaybeImage
     // }
 
     auto res = std::move(_image);
-    if (std::holds_alternative<img::Image>(_image))
+    if (std::holds_alternative<img::Image>(res))
         _image = NoNewImageAvailableYet{}; // Make sure we know that the current image has been consumed
 
     return res; // We don't use std::move here because it would prevent copy elision
