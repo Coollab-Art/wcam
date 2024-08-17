@@ -1,5 +1,5 @@
-#include "ICapture.hpp"
 #if defined(_WIN32)
+#include "wcam_windows.hpp"
 #include <dshow.h>
 #include <cstdlib>
 #include <format>
@@ -8,9 +8,9 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include "ICapture.hpp"
 #include "make_device_id.hpp"
 #include "wcam/wcam.hpp"
-#include "wcam_windows.hpp"
 
 /// NB: we use DirectShow and not MediaFoundation
 /// because OBS Virtual Camera only works with DirectShow
