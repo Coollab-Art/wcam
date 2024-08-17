@@ -1,3 +1,4 @@
+#include <sys/types.h>
 #include "ICapture.hpp"
 #if defined(__linux__)
 #include <fcntl.h>
@@ -16,6 +17,31 @@
 #include "wcam_linux.hpp"
 
 namespace wcam::internal {
+
+void yuyv_to_rgb(unsigned char* yuyv, unsigned char* rgb, int width, int height)
+{
+    for (int i = 0; i < width * height * 2; i += 4)
+    {
+        int y0 = yuyv[i + 0] << 8;
+        int u  = yuyv[i + 1] - 128;
+        int y1 = yuyv[i + 2] << 8;
+        int v  = yuyv[i + 3] - 128;
+
+        int r0 = (y0 + 359 * v) >> 8;
+        int g0 = (y0 - 88 * u - 183 * v) >> 8;
+        int b0 = (y0 + 454 * u) >> 8;
+        int r1 = (y1 + 359 * v) >> 8;
+        int g1 = (y1 - 88 * u - 183 * v) >> 8;
+        int b1 = (y1 + 454 * u) >> 8;
+
+        rgb[i * 3 / 2 + 0] = std::clamp(r0, 0, 255);
+        rgb[i * 3 / 2 + 1] = std::clamp(g0, 0, 255);
+        rgb[i * 3 / 2 + 2] = std::clamp(b0, 0, 255);
+        rgb[i * 3 / 2 + 3] = std::clamp(r1, 0, 255);
+        rgb[i * 3 / 2 + 4] = std::clamp(g1, 0, 255);
+        rgb[i * 3 / 2 + 5] = std::clamp(b1, 0, 255);
+    }
+}
 
 static auto find_available_resolutions(int const video_device) -> std::vector<img::Size>
 {
@@ -121,10 +147,9 @@ CaptureImpl::~CaptureImpl()
 
 auto CaptureImpl::image() -> MaybeImage
 {
-    static std::vector<uint8_t> bob;
-    getFrame(bob);
-    assert(bob.size() == _resolution.pixels_count() * 3);
-    return img::Image{_resolution, img::PixelFormat::RGB, img::FirstRowIs::Bottom, bob.data()};
+    auto* bob = getFrame();
+    // assert(bob.size() == _resolution.pixels_count() * 3);
+    return img::Image{_resolution, img::PixelFormat::RGB, img::FirstRowIs::Bottom, bob};
     // std::lock_guard lock{_mutex};
 
     // auto res = std::move(_image);
@@ -134,7 +159,7 @@ auto CaptureImpl::image() -> MaybeImage
     // return res; // We don't use std::move here because it would prevent copy elision
 }
 
-bool CaptureImpl::getFrame(std::vector<uint8_t>& frameBuffer)
+auto CaptureImpl::getFrame() -> uint8_t*
 {
     struct v4l2_buffer buf;
     memset(&buf, 0, sizeof(buf));
@@ -145,18 +170,16 @@ bool CaptureImpl::getFrame(std::vector<uint8_t>& frameBuffer)
     if (ioctl(fd, VIDIOC_DQBUF, &buf) == -1)
     {
         perror("Failed to dequeue buffer");
-        return false;
+        // return false;
     }
-
-    frameBuffer.assign(static_cast<uint8_t*>(buffers[buf.index].start), static_cast<uint8_t*>(buffers[buf.index].start) + buf.bytesused);
+    uint8_t* rgb_data = new uint8_t[_resolution.pixels_count() * 3];
+    yuyv_to_rgb((unsigned char*)buffers[0].start, rgb_data, _resolution.width(), _resolution.height());
 
     if (ioctl(fd, VIDIOC_QBUF, &buf) == -1)
     {
         perror("Failed to queue buffer");
-        return false;
     }
-
-    return true;
+    return rgb_data;
 }
 
 void CaptureImpl::openDevice(DeviceId const& id)
@@ -184,7 +207,7 @@ void CaptureImpl::initDevice()
     fmt.fmt.pix.width       = _resolution.width();
     fmt.fmt.pix.height      = _resolution.height();
     fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
-    fmt.fmt.pix.field       = V4L2_FIELD_INTERLACED;
+    fmt.fmt.pix.field       = V4L2_FIELD_NONE;
 
     if (ioctl(fd, VIDIOC_S_FMT, &fmt) == -1)
     {
@@ -194,7 +217,7 @@ void CaptureImpl::initDevice()
 
     struct v4l2_requestbuffers req;
     memset(&req, 0, sizeof(req));
-    req.count  = 4;
+    req.count  = 1;
     req.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     req.memory = V4L2_MEMORY_MMAP;
 

@@ -19,7 +19,7 @@ public:
     auto image() -> MaybeImage override;
 
 private:
-    bool getFrame(std::vector<uint8_t>& frameBuffer);
+    auto getFrame() -> uint8_t*;
     void openDevice(DeviceId const& id);
     void initDevice();
     void startCapture();
