@@ -9,16 +9,21 @@ auto CapturesManager::image(CaptureStrongRef const& cap_ref) -> MaybeImage
     auto const id = cap_ref._ptr->id();
     if (!is_plugged_in(id))
         return CaptureError::WebcamUnplugged;
-    return _open_captures[id]->image();
+    return cap_ref._ptr->image();
 }
 
 auto CapturesManager::start_capture(DeviceId const& id, img::Size const& resolution) -> CaptureStrongRef
 {
     auto const it = _open_captures.find(id);
     if (it != _open_captures.end())
-        return it->second;
-    _open_captures[id] = std::make_shared<Capture>(id, resolution);
-    return _open_captures[id];
+    {
+        std::shared_ptr<Capture> const ptr = it->second.lock();
+        if (ptr) // A capture is still alive, we don't want to recreate a new one (we can't capture the same webcam twice)
+            return ptr;
+    }
+    auto const ptr     = std::make_shared<Capture>(id, resolution);
+    _open_captures[id] = ptr;
+    return ptr;
 }
 
 void CapturesManager::on_webcam_plugged_in(DeviceId const& id)
