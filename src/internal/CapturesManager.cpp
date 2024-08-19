@@ -14,8 +14,11 @@ auto CapturesManager::image(CaptureStrongRef const& cap_ref) -> MaybeImage
 
 auto CapturesManager::start_capture(DeviceId const& id, img::Size const& resolution) -> CaptureStrongRef
 {
+    auto const it = _open_captures.find(id);
+    if (it != _open_captures.end())
+        return it->second;
     _open_captures[id] = std::make_shared<Capture>(id, resolution);
-    return CaptureStrongRef{_open_captures[id]};
+    return _open_captures[id];
 }
 
 void CapturesManager::on_webcam_plugged_in(DeviceId const& id)
