@@ -23,6 +23,7 @@ public:
     [[nodiscard]] auto infos() const -> std::vector<Info>;
     [[nodiscard]] auto open_or_get_webcam(DeviceId const& id) -> SharedWebcam;
     [[nodiscard]] auto default_resolution(DeviceId const& id) const -> Resolution;
+    void               restart_capture(DeviceId const& id);
 
     void update();
 
