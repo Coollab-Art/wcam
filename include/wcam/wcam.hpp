@@ -15,6 +15,9 @@ namespace wcam {
 auto all_webcams_info() -> std::vector<Info>;
 
 /// Starts capturing the requested camera. If it safe to call it an a camera that is already captured, we will just reuse the existing capture.
-auto open_webcam(DeviceId const& id) -> SharedWebcam;
+auto open_webcam(DeviceId const&) -> SharedWebcam;
+
+auto get_selected_resolution(DeviceId const&) -> Resolution;
+void set_selected_resolution(DeviceId const&, Resolution);
 
 } // namespace wcam

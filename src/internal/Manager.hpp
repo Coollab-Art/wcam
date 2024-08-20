@@ -1,5 +1,4 @@
 #pragma once
-#include <functional>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -23,7 +22,7 @@ public:
 
     [[nodiscard]] auto infos() const -> std::vector<Info>;
     [[nodiscard]] auto open_or_get_webcam(DeviceId const& id) -> SharedWebcam;
-    [[nodiscard]] auto selected_resolution(DeviceId const& id) const -> Resolution;
+    [[nodiscard]] auto default_resolution(DeviceId const& id) const -> Resolution;
 
     void update();
 

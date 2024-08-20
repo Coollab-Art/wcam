@@ -50,28 +50,40 @@ auto main() -> int
         int        imgui_id{0};
         for (auto const& info : webcam_infos)
         {
-            if (ImGui::CollapsingHeader((info.name + " (ID: " + info.id.as_string() + ")").c_str(), ImGuiTreeNodeFlags_DefaultOpen))
+            ImGui::NewLine();
+            ImGui::PushID(imgui_id++);
+
+            ImGui::SeparatorText((info.name + " (ID: " + info.id.as_string() + ")").c_str());
+            auto const selected_resolution = wcam::get_selected_resolution(info.id);
+            if (ImGui::BeginCombo("Resolution", wcam::to_string(selected_resolution).c_str()))
             {
                 for (auto const& resolution : info.resolutions)
                 {
-                    ImGui::Text("%d x %d", resolution.width(), resolution.height());
-                    ImGui::PushID(imgui_id++);
-                    if (ImGui::Button("Open webcam"))
-                    {
-                        try
-                        {
-                            capture = wcam::open_webcam(info.id);
-                        }
-                        catch (std::exception const& e)
-                        {
-                            std::cerr << "Exception occurred: " << e.what() << '\n';
-                            capture = std::nullopt;
-                            throw;
-                        }
-                    }
-                    ImGui::PopID();
+                    bool const is_selected = resolution == selected_resolution;
+                    if (ImGui::Selectable(wcam::to_string(resolution).c_str(), is_selected))
+                        wcam::set_selected_resolution(info.id, resolution);
+
+                    // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
+                    if (is_selected)
+                        ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+
+            if (ImGui::Button("Open webcam"))
+            {
+                try
+                {
+                    capture = wcam::open_webcam(info.id);
+                }
+                catch (std::exception const& e)
+                {
+                    std::cerr << "Exception occurred: " << e.what() << '\n';
+                    capture = std::nullopt;
+                    throw;
                 }
             }
+            ImGui::PopID();
         }
         if (capture.has_value())
         {

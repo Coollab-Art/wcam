@@ -1,6 +1,7 @@
 #include "Manager.hpp"
 #include <mutex>
 #include <variant>
+#include "ResolutionsManager.hpp"
 #include "WebcamRequest.hpp"
 #include "wcam_linux.hpp"
 #include "wcam_macos.hpp"
@@ -74,9 +75,15 @@ auto Manager::open_or_get_webcam(DeviceId const& id) -> SharedWebcam
     return SharedWebcam{request};
 }
 
-auto Manager::selected_resolution(DeviceId const& id) const -> Resolution
+auto Manager::default_resolution(DeviceId const& id) const -> Resolution
 {
-    return {1920, 1080}; // TODO
+    std::scoped_lock lock{_infos_mutex};
+    auto const       it = std::find_if(_infos.begin(), _infos.end(), [&](Info const& info) {
+        return info.id == id;
+    });
+    if (it == _infos.end() || it->resolutions.empty())
+        return {1, 1};
+    return it->resolutions[0]; // We know that resolutions are sorted from largest to smallest, and we want to select the largest one by default
 }
 
 auto Manager::is_plugged_in(DeviceId const& id) const -> bool
@@ -115,7 +122,7 @@ void Manager::update()
             // Otherwise, the webcam is plugged in but the capture is not valid, so we should try to (re)create it
             try
             {
-                request->maybe_capture() = Capture{request->id(), selected_resolution(request->id())};
+                request->maybe_capture() = Capture{request->id(), resolutions_manager().selected_resolution(request->id())};
             }
             catch (CaptureError const& err)
             {
