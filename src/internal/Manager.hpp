@@ -36,7 +36,8 @@ private:
     std::vector<Info>                                          _infos{};
     std::unordered_map<DeviceId, std::weak_ptr<WebcamRequest>> _current_requests{};
 
-    mutable std::mutex _mutex{};
+    mutable std::mutex _infos_mutex{};
+    mutable std::mutex _captures_mutex{};
     std::atomic<bool>  _wants_to_stop_thread{false};
     std::thread        _thread{}; // Must be initialized last, to make sure that everything else is init when the thread starts its job and uses those other things
 

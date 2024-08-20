@@ -56,7 +56,7 @@ static auto grab_all_infos() -> std::vector<Info>
 
 auto Manager::infos() const -> std::vector<Info>
 {
-    std::scoped_lock lock{_mutex};
+    std::scoped_lock lock{_infos_mutex};
     return _infos;
 }
 
@@ -81,6 +81,7 @@ auto Manager::selected_resolution(DeviceId const& id) const -> Resolution
 
 auto Manager::is_plugged_in(DeviceId const& id) const -> bool
 {
+    std::scoped_lock lock{_infos_mutex};
     return _infos.end() != std::find_if(_infos.begin(), _infos.end(), [&](Info const& info) {
                return info.id == id;
            });
@@ -91,13 +92,13 @@ void Manager::update()
     { // TODO do this only every 0.5s, and sleep if we arrive here to fast ?
         auto infos = grab_all_infos();
 
-        std::scoped_lock lock{_mutex};
+        std::scoped_lock lock{_infos_mutex};
         _infos = std::move(infos);
     }
 
     {
         auto const       current_requests = _current_requests;
-        std::scoped_lock lock{_mutex};
+        std::scoped_lock lock{_captures_mutex};
 
         for (auto const& [_, request_weak_ptr] : current_requests) // Iterate on a copy of _current_requests, because we might add elements in the latter in parallel, and this would mess up the iteration (and we don't want to lock the map, otherwise it would slow down creating a new SharedWebcam)
         {
