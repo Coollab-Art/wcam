@@ -8,6 +8,35 @@
 
 namespace wcam::internal {
 
+#ifndef NDEBUG
+std::atomic<int> Manager::_managers_alive_count{0};
+#endif
+
+Manager::Manager()
+    : _thread{&Manager::thread_job, std::ref(*this)}
+{
+#ifndef NDEBUG
+    assert(_managers_alive_count.load() == 0);
+    _managers_alive_count.fetch_add(1);
+#endif
+}
+
+void Manager::thread_job(Manager& self)
+{
+    while (!self._wants_to_stop_thread.load())
+        self.update();
+}
+
+Manager::~Manager()
+{
+    _wants_to_stop_thread.store(true);
+    _thread.join();
+
+#ifndef NDEBUG
+    _managers_alive_count.fetch_add(-1);
+#endif
+}
+
 auto grab_all_infos_impl() -> std::vector<Info>;
 
 static auto grab_all_infos() -> std::vector<Info>
@@ -59,7 +88,7 @@ auto Manager::is_plugged_in(DeviceId const& id) const -> bool
 
 void Manager::update()
 {
-    {
+    { // TODO do this only every 0.5s, and sleep if we arrive here to fast ?
         auto infos = grab_all_infos();
 
         std::scoped_lock lock{_mutex};

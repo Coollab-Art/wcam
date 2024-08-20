@@ -2,6 +2,7 @@
 #include <vector>
 #include "../../../src/DeviceId.hpp"
 #include "../../../src/Info.hpp"
+#include "../../../src/KeepLibraryAlive.hpp"
 #include "../../../src/MaybeImage.hpp"
 #include "../../../src/Resolution.hpp"
 #include "../../../src/SharedWebcam.hpp"

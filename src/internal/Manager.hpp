@@ -1,4 +1,6 @@
 #pragma once
+#include <functional>
+#include <memory>
 #include <mutex>
 #include <thread>
 #include <unordered_map>
@@ -12,6 +14,13 @@ namespace wcam::internal {
 
 class Manager {
 public:
+    Manager();
+    ~Manager();
+    Manager(Manager const&)                        = delete;
+    auto operator=(Manager const&) -> Manager&     = delete;
+    Manager(Manager&&) noexcept                    = delete;
+    auto operator=(Manager&&) noexcept -> Manager& = delete;
+
     [[nodiscard]] auto infos() const -> std::vector<Info>;
     [[nodiscard]] auto open_or_get_webcam(DeviceId const& id) -> SharedWebcam;
     [[nodiscard]] auto selected_resolution(DeviceId const& id) const -> Resolution;
@@ -21,31 +30,21 @@ public:
 private:
     auto is_plugged_in(DeviceId const& id) const -> bool;
 
+    static void thread_job(Manager& self);
+
 private:
     std::vector<Info>                                          _infos{};
     std::unordered_map<DeviceId, std::weak_ptr<WebcamRequest>> _current_requests{};
-    mutable std::mutex                                         _mutex{};
+
+    mutable std::mutex _mutex{};
+    std::atomic<bool>  _wants_to_stop_thread{false};
+    std::thread        _thread{}; // Must be initialized last, to make sure that everything else is init when the thread starts its job and uses those other things
+
+#ifndef NDEBUG
+    static std::atomic<int> _managers_alive_count;
+#endif
 };
 
-inline auto manager() -> Manager&
-{
-    static auto instance = Manager{};
-    return instance;
-}
-
-class MetaManager {
-public:
-    MetaManager()
-        : _thread{[]() {
-            while (true) // TODO stop the thread properly
-                manager().update();
-        }}
-    {}
-
-private:
-    std::thread _thread;
-};
-
-static MetaManager meta_manager{};
+auto manager() -> std::shared_ptr<Manager>;
 
 } // namespace wcam::internal
