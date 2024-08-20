@@ -1,4 +1,5 @@
 #include "Manager.hpp"
+#include <mutex>
 #include <variant>
 #include "WebcamRequest.hpp"
 #include "wcam_linux.hpp"
@@ -26,7 +27,8 @@ static auto grab_all_infos() -> std::vector<Info>
 
 auto Manager::infos() const -> std::vector<Info>
 {
-    return _infos; // TODO lock
+    std::scoped_lock lock{_mutex};
+    return _infos;
 }
 
 auto Manager::open_or_get_webcam(DeviceId const& id) -> SharedWebcam
@@ -45,7 +47,7 @@ auto Manager::open_or_get_webcam(DeviceId const& id) -> SharedWebcam
 
 auto Manager::selected_resolution(DeviceId const& id) const -> Resolution
 {
-    return {1, 1}; // TODO
+    return {1920, 1080}; // TODO
 }
 
 auto Manager::is_plugged_in(DeviceId const& id) const -> bool
@@ -57,42 +59,38 @@ auto Manager::is_plugged_in(DeviceId const& id) const -> bool
 
 void Manager::update()
 {
-    // TODO do something smart, like keeping them in cache and only refreshing every 0.5 seconds?
-    auto const new_infos = grab_all_infos();
-    /// Signal the captures manager when a webcam is plugged back in
-    // TODO
-    // for (auto const& info : new_infos)
-    // {
-    //     if (_infos.end() == std::find_if(_infos.begin(), _infos.end(), [&](Info const& info2) {
-    //             return info.id == info2.id;
-    //         }))
-    //     {
-    //         // captures_manager().on_webcam_plugged_in(info.id);
-    //     }
-    // }
-
-    _infos = new_infos;
-
-    for (auto const& [_, request_weak_ptr] : _current_requests)
     {
-        std::shared_ptr<WebcamRequest> const request = request_weak_ptr.lock();
-        if (!request) // There is currently no request for that webcam, nothing to do
-            continue;
-        if (!is_plugged_in(request->id()))
+        auto infos = grab_all_infos();
+
+        std::scoped_lock lock{_mutex};
+        _infos = std::move(infos);
+    }
+
+    {
+        auto const       current_requests = _current_requests;
+        std::scoped_lock lock{_mutex};
+
+        for (auto const& [_, request_weak_ptr] : current_requests) // Iterate on a copy of _current_requests, because we might add elements in the latter in parallel, and this would mess up the iteration (and we don't want to lock the map, otherwise it would slow down creating a new SharedWebcam)
         {
-            request->maybe_capture() = Error_WebcamUnplugged{};
-            continue;
-        }
-        if (std::holds_alternative<Capture>(request->maybe_capture()))
-            continue; // The capture is valid, nothing to do
-        // Otherwise, the webcam is plugged in but the capture is not valid, so we should try to (re)create it
-        try
-        {
-            request->maybe_capture() = Capture{request->id(), selected_resolution(request->id())};
-        }
-        catch (CaptureError const& err)
-        {
-            request->maybe_capture() = err;
+            std::shared_ptr<WebcamRequest> const request = request_weak_ptr.lock();
+            if (!request) // There is currently no request for that webcam, nothing to do
+                continue;
+            if (!is_plugged_in(request->id()))
+            {
+                request->maybe_capture() = Error_WebcamUnplugged{};
+                continue;
+            }
+            if (std::holds_alternative<Capture>(request->maybe_capture()))
+                continue; // The capture is valid, nothing to do
+            // Otherwise, the webcam is plugged in but the capture is not valid, so we should try to (re)create it
+            try
+            {
+                request->maybe_capture() = Capture{request->id(), selected_resolution(request->id())};
+            }
+            catch (CaptureError const& err)
+            {
+                request->maybe_capture() = err;
+            }
         }
     }
 }

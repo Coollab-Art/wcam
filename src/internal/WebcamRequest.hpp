@@ -17,7 +17,6 @@ public:
     [[nodiscard]] auto image() const -> MaybeImage; // TODO return by const& ?
 
     [[nodiscard]] auto id() const -> DeviceId const& { return _id; }
-    [[nodiscard]] auto maybe_capture() const -> MaybeCapture const& { return _maybe_capture; }
     [[nodiscard]] auto maybe_capture() -> MaybeCapture& { return _maybe_capture; }
 
 private:

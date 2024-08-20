@@ -1,4 +1,5 @@
 #pragma once
+#include <mutex>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -23,6 +24,7 @@ private:
 private:
     std::vector<Info>                                          _infos{};
     std::unordered_map<DeviceId, std::weak_ptr<WebcamRequest>> _current_requests{};
+    mutable std::mutex                                         _mutex{};
 };
 
 inline auto manager() -> Manager&
@@ -44,6 +46,6 @@ private:
     std::thread _thread;
 };
 
-// static MetaManager meta_manager{};
+static MetaManager meta_manager{};
 
 } // namespace wcam::internal

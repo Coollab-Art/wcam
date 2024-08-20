@@ -26,7 +26,6 @@ auto main() -> int
     quick_imgui::loop("webcam_info tests", [&]() {   // Open a window and run all the ImGui-related code
         if (texture_id == 0)
             texture_id = make_texture();
-        wcam::internal::manager().update();
         ImGui::Begin("webcam_info tests");
 
         try
