@@ -1,6 +1,5 @@
 #if defined(_WIN32)
 #include "wcam_windows.hpp"
-#include <dshow.h>
 #include <cstdlib>
 #include <format>
 #include <source_location>
@@ -8,7 +7,6 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
-#include "ICapture.hpp"
 #include "make_device_id.hpp"
 #include "wcam/wcam.hpp"
 
@@ -305,7 +303,6 @@ auto CaptureImpl::is_disconnected() -> bool
 }
 
 CaptureImpl::CaptureImpl(DeviceId const& device_id, img::Size const& requested_resolution)
-    : ICapture{device_id}
 {
     CoInitializeIFN();
 
@@ -436,7 +433,7 @@ CaptureImpl::CaptureImpl(DeviceId const& device_id, img::Size const& requested_r
     THROW_IF_ERR(_media_control->Run());
 
     if (is_disconnected())
-        _image = CaptureError::WebcamAlreadyUsedInAnotherApplication;
+        throw CaptureError{Error_WebcamAlreadyUsedInAnotherApplication{}};
 }
 
 auto CaptureImpl::image() -> MaybeImage

@@ -1,17 +1,16 @@
 #include "wcam/wcam.hpp"
-#include "internal/CapturesManager.hpp"
-#include "internal/InfosManager.hpp"
+#include "internal/Manager.hpp"
 
 namespace wcam {
 
 auto all_webcams_info() -> std::vector<Info>
 {
-    return internal::infos_manager().infos();
+    return internal::manager().infos();
 }
 
-auto start_capture(DeviceId const& id, img::Size const& resolution) -> CaptureStrongRef
+auto open_webcam(DeviceId const& id) -> SharedWebcam
 {
-    return internal::captures_manager().start_capture(id, resolution);
+    return internal::manager().open_or_get_webcam(id);
 }
 
 } // namespace wcam

@@ -1,7 +1,7 @@
 #pragma once
+#include "ICaptureImpl.hpp"
 #if defined(_WIN32)
 #include <mutex>
-#include "ICapture.hpp"
 #include "qedit.h"
 #include "wcam/wcam.hpp"
 
@@ -47,7 +47,7 @@ inline void NV12ToRGB24(uint8_t* nv12Data, uint8_t* rgbData, img::Size::DataType
 
 EXTERN_C const IID IID_ISampleGrabberCB;
 class CaptureImpl : public ISampleGrabberCB
-    , public ICapture {
+    , public ICaptureImpl {
 public:
     CaptureImpl(DeviceId const& id, img::Size const& resolution);
     ~CaptureImpl() override;
@@ -115,7 +115,7 @@ private:
     auto is_disconnected() -> bool;
 
 private:
-    MaybeImage _image{MustClearPreviousImage{}};
+    MaybeImage _image{ImageNotInitYet{}};
     img::Size  _resolution;
     GUID       _video_format; // At the moment we support MEDIASUBTYPE_RGB24 and MEDIASUBTYPE_NV12 (which is required for the OBS virtual camera)
     std::mutex _mutex{};

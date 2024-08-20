@@ -1,10 +1,10 @@
-#include <sys/types.h>
-#include "ICapture.hpp"
 #if defined(__linux__)
+#include "wcam_linux.hpp"
 #include <fcntl.h>
 #include <linux/videodev2.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/types.h>
 #include <unistd.h>
 #include <cstdint>
 #include <cstdio>
@@ -13,8 +13,8 @@
 #include <iostream>
 #include <vector>
 #include "../Info.hpp"
+#include "ICapture.hpp"
 #include "make_device_id.hpp"
-#include "wcam_linux.hpp"
 
 namespace wcam::internal {
 

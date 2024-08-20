@@ -1,10 +1,14 @@
 #pragma once
 #include <vector>
-#include "../../../src/CaptureStrongRef.hpp"
 #include "../../../src/DeviceId.hpp"
 #include "../../../src/Info.hpp"
 #include "../../../src/MaybeImage.hpp"
+#include "../../../src/Resolution.hpp"
+#include "../../../src/SharedWebcam.hpp"
+#include "../../../src/internal/Manager.hpp" // TODO remove
+#include "../../../src/overloaded.hpp"
 #include "img/img.hpp"
+
 
 namespace wcam {
 
@@ -12,6 +16,6 @@ namespace wcam {
 auto all_webcams_info() -> std::vector<Info>;
 
 /// Starts capturing the requested camera. If it safe to call it an a camera that is already captured, we will just reuse the existing capture.
-auto start_capture(DeviceId const& id, img::Size const& resolution) -> CaptureStrongRef;
+auto open_webcam(DeviceId const& id) -> SharedWebcam;
 
 } // namespace wcam

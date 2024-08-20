@@ -19,20 +19,14 @@ auto make_texture() -> GLuint
     return textureID;
 }
 
-template<class... Ts>
-struct overloaded : Ts... {
-    using Ts::operator()...;
-};
-template<class... Ts>
-overloaded(Ts...) -> overloaded<Ts...>;
-
 auto main() -> int
 {
-    std::optional<wcam::CaptureStrongRef> capture;
-    GLuint                                texture_id{0}; // NOLINT(*init-variables)
-    quick_imgui::loop("webcam_info tests", [&]() {       // Open a window and run all the ImGui-related code
+    std::optional<wcam::SharedWebcam> capture;
+    GLuint                            texture_id{0}; // NOLINT(*init-variables)
+    quick_imgui::loop("webcam_info tests", [&]() {   // Open a window and run all the ImGui-related code
         if (texture_id == 0)
             texture_id = make_texture();
+        wcam::internal::manager().update();
         ImGui::Begin("webcam_info tests");
 
         try
@@ -59,7 +53,7 @@ auto main() -> int
                     {
                         try
                         {
-                            capture = wcam::start_capture(info.id, resolution);
+                            capture = wcam::open_webcam(info.id);
                         }
                         catch (std::exception const& e)
                         {
@@ -80,7 +74,7 @@ auto main() -> int
             static bool                flip_y{};
             static std::string         error_msg{};
             std::visit(
-                overloaded{
+                wcam::overloaded{
                     [&](img::Image const& image) {
                         width     = image.width();
                         height    = image.height();
@@ -89,13 +83,13 @@ auto main() -> int
                         glBindTexture(GL_TEXTURE_2D, texture_id);
                         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, static_cast<GLsizei>(image.width()), static_cast<GLsizei>(image.height()), 0, image.pixel_format() == img::PixelFormat::RGB ? GL_RGB : GL_BGR, GL_UNSIGNED_BYTE, image.data());
                     },
-                    [](wcam::CaptureError error) {
+                    [](wcam::CaptureError const& error) {
                         error_msg = wcam::to_string(error);
                     },
                     [](wcam::NoNewImageAvailableYet) {
                         error_msg = "";
                     },
-                    [](wcam::MustClearPreviousImage) {
+                    [](wcam::ImageNotInitYet) { // TODO display a "LOADING"
                         error_msg = "";
                         // Reset the image, otherwise it will show briefly when opening the next webcam (while the new capture hasn't returned any image yet) / when a capture needs to restart because the camera was unplugged and then plugged back
                         width  = 0;
