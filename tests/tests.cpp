@@ -19,20 +19,13 @@ auto make_texture() -> GLuint
     return textureID;
 }
 
-auto main() -> int
-{
-    auto const keep_wcam_alive = wcam::KeepLibraryAlive{}; // We choose to keep the library running for the whole duration of the program.
-                                                           // But in a real application you would probably want to only have the library active if you are actively using or looking to use a camera.
-                                                           // For example in OBS you would store one wcam::KeepLibraryAlive{} in each of the webcam Sources, so that the library is only active while a webcam source is in the scene, or when the window to select which webcam to use is open
-                                                           // While the library is alive, it has a thread running in the background constantly refreshing its list of infos on which webcam are plugged in, and if webcams are currently beeing used this thread also checks to restart them if they failed (eg if the webcam was already used by another application when we tried to open it)
-
-    std::optional<wcam::SharedWebcam> capture;
-    GLuint                            texture_id{0}; // NOLINT(*init-variables)
-    quick_imgui::AverageTime          timer{};
-    quick_imgui::loop("webcam_info tests", [&]() { // Open a window and run all the ImGui-related code
+class WebcamWindow {
+public:
+    void update()
+    {
         if (texture_id == 0)
             texture_id = make_texture();
-        ImGui::Begin("webcam_info tests");
+
         timer.imgui_plot();
         timer.start();
 
@@ -133,6 +126,35 @@ auto main() -> int
             }
         }
         timer.stop();
+    }
+
+private:
+    GLuint                            texture_id{0};
+    quick_imgui::AverageTime          timer{};
+    std::optional<wcam::SharedWebcam> capture;
+    // TODO update the explanation about how we use KeepLibraryAlive
+    wcam::KeepLibraryAlive _keep_wcam_alive{}; // We choose to keep the library running for the whole duration of the program.
+                                               // But in a real application you would probably want to only have the library active if you are actively using or looking to use a camera.
+                                               // For example in OBS you would store one wcam::KeepLibraryAlive{} in each of the webcam Sources, so that the library is only active while a webcam source is in the scene, or when the window to select which webcam to use is open
+                                               // While the library is alive, it has a thread running in the background constantly refreshing its list of infos on which webcam are plugged in, and if webcams are currently beeing used this thread also checks to restart them if they failed (eg if the webcam was already used by another application when we tried to open it)
+};
+
+auto main() -> int
+{
+    auto windows = std::vector<WebcamWindow>(3);
+    quick_imgui::loop("webcam_info tests", [&]() {
+        ImGui::Begin("main");
+        if (ImGui::Button("Add"))
+            windows.emplace_back();
+        ImGui::SameLine();
+        if (ImGui::Button("Remove") && !windows.empty())
+            windows.pop_back();
         ImGui::End();
+        for (size_t i = 0; i < windows.size(); ++i)
+        {
+            ImGui::Begin(std::to_string(i + 1).c_str());
+            windows[i].update();
+            ImGui::End();
+        }
     });
 }
