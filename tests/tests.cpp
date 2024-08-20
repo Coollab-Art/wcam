@@ -28,10 +28,13 @@ auto main() -> int
 
     std::optional<wcam::SharedWebcam> capture;
     GLuint                            texture_id{0}; // NOLINT(*init-variables)
-    quick_imgui::loop("webcam_info tests", [&]() {   // Open a window and run all the ImGui-related code
+    quick_imgui::AverageTime          timer{};
+    quick_imgui::loop("webcam_info tests", [&]() { // Open a window and run all the ImGui-related code
         if (texture_id == 0)
             texture_id = make_texture();
         ImGui::Begin("webcam_info tests");
+        timer.imgui_plot();
+        timer.start();
 
         try
         {
@@ -117,6 +120,7 @@ auto main() -> int
                 capture = std::nullopt;
             }
         }
+        timer.stop();
         ImGui::End();
     });
 }
