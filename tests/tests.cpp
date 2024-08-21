@@ -113,7 +113,8 @@ public:
             );
             if (error_msg.empty())
             {
-                ImGui::Image(static_cast<ImTextureID>(reinterpret_cast<void*>(static_cast<uint64_t>(texture_id))), ImVec2{400.f * static_cast<float>(width) / static_cast<float>(height), 400.f}, flip_y ? ImVec2(0., 1.) : ImVec2(0., 0.), flip_y ? ImVec2(1., 0.) : ImVec2(1., 1.)); // NOLINT(performance-no-int-to-ptr, *reinterpret-cast)
+                auto const w = ImGui::GetContentRegionAvail().x;
+                ImGui::Image(static_cast<ImTextureID>(reinterpret_cast<void*>(static_cast<uint64_t>(texture_id))), ImVec2{w, w / static_cast<float>(width) * static_cast<float>(height)}, flip_y ? ImVec2(0., 1.) : ImVec2(0., 0.), flip_y ? ImVec2(1., 0.) : ImVec2(1., 1.)); // NOLINT(performance-no-int-to-ptr, *reinterpret-cast)
                 ImGui::Text("%d x %d", width, height);
             }
             else
