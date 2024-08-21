@@ -2,7 +2,7 @@
 #if defined(__linux__)
 #include <vector>
 #include "../DeviceId.hpp"
-#include "ICapture.hpp"
+#include "ICaptureImpl.hpp"
 
 namespace wcam::internal {
 
@@ -11,7 +11,7 @@ struct Buffer {
     size_t length;
 };
 
-class CaptureImpl : public ICapture {
+class CaptureImpl : public ICaptureImpl {
 public:
     CaptureImpl(DeviceId const& id, img::Size const& resolution);
     ~CaptureImpl() override;
@@ -28,7 +28,7 @@ private:
     void closeDevice();
 
 private:
-    MaybeImage _image{MustClearPreviousImage{}};
+    MaybeImage _image{ImageNotInitYet{}};
     img::Size  _resolution;
     std::mutex _mutex{};
 

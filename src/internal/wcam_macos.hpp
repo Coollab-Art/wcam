@@ -1,10 +1,11 @@
 #pragma once
 #if defined(__APPLE__)
+#include "ICaptureImpl.hpp"
 #include "wcam/wcam.hpp"
 
 namespace wcam::internal {
 
-class CaptureImpl : public ICapture {
+class CaptureImpl : public ICaptureImpl {
 public:
     CaptureImpl(DeviceId const& id, img::Size const& resolution);
     ~CaptureImpl() override;

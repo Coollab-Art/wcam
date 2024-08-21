@@ -13,7 +13,7 @@
 #include <iostream>
 #include <vector>
 #include "../Info.hpp"
-#include "ICapture.hpp"
+#include "ICaptureImpl.hpp"
 #include "make_device_id.hpp"
 
 namespace wcam::internal {
@@ -130,8 +130,7 @@ auto grab_all_infos_impl() -> std::vector<Info>
 }
 
 CaptureImpl::CaptureImpl(DeviceId const& id, img::Size const& resolution)
-    : ICapture{id}
-    , _resolution{resolution}
+    : _resolution{resolution}
 {
     openDevice(id);
     initDevice();
@@ -149,7 +148,7 @@ auto CaptureImpl::image() -> MaybeImage
 {
     auto* bob = getFrame();
     // assert(bob.size() == _resolution.pixels_count() * 3);
-    return img::Image{_resolution, img::PixelFormat::RGB, img::FirstRowIs::Bottom, bob};
+    return std::make_shared<img::Image>(_resolution, img::PixelFormat::RGB, img::FirstRowIs::Bottom, bob);
     // std::lock_guard lock{_mutex};
 
     // auto res = std::move(_image);
