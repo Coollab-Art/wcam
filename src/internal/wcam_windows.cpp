@@ -17,7 +17,6 @@
 /// So in a very distant future, when Windows 11 is on 99.999% of the machines, and when OBS implements a MediaFoundation backend and a virtual camera for it, then we can switch to MediaFoundation
 
 namespace wcam::internal {
-using namespace std; // TODO remove
 
 auto convert_wstr_to_str(BSTR const& wstr) -> std::string
 {
@@ -279,29 +278,6 @@ void DeleteMediaType(AM_MEDIA_TYPE* pmt)
 //     return it->second;
 // }
 
-auto CaptureImpl::is_disconnected() -> bool
-{
-    long     evCode;
-    LONG_PTR param1, param2;
-    bool     disconnected = false;
-
-    while (S_OK == _media_event->GetEvent(&evCode, &param1, &param2, 0))
-    {
-        // std::cout << CreateEventCodeMap(evCode) << '\n';
-        if (evCode == EC_DEVICE_LOST) // TODO distringuish this (CaptureError::WebcamUnplugged) from EC_ERRORABORT (CaptureError::WebcamAlreadyUsedInAnotherApplication)
-        {
-            disconnected = true;
-        }
-        if (evCode == EC_ERRORABORT)
-        {
-            // throw 0;
-            disconnected = true;
-        }
-        _media_event->FreeEventParams(evCode, param1, param2);
-    }
-    return disconnected;
-}
-
 CaptureImpl::CaptureImpl(DeviceId const& device_id, img::Size const& requested_resolution)
 {
     CoInitializeIFN();
@@ -309,8 +285,6 @@ CaptureImpl::CaptureImpl(DeviceId const& device_id, img::Size const& requested_r
     auto pBuilder = AutoRelease<ICaptureGraphBuilder2>{CLSID_CaptureGraphBuilder2};
     auto pGraph   = AutoRelease<IGraphBuilder>{CLSID_FilterGraph};
     THROW_IF_ERR(pBuilder->SetFiltergraph(pGraph));
-
-    THROW_IF_ERR(pGraph->QueryInterface(IID_IMediaEventEx, (void**)&_media_event));
 
     // Obtenir l'objet Moniker correspondant au périphérique sélectionné
     AutoRelease<ICreateDevEnum> pDevEnum{CLSID_SystemDeviceEnum};
@@ -432,8 +406,22 @@ CaptureImpl::CaptureImpl(DeviceId const& device_id, img::Size const& requested_r
     THROW_IF_ERR(pGraph->QueryInterface(IID_IMediaControl, (void**)&_media_control));
     THROW_IF_ERR(_media_control->Run());
 
-    if (is_disconnected())
-        throw CaptureError{Error_WebcamAlreadyUsedInAnotherApplication{}};
+    {
+        auto _media_event = AutoRelease<IMediaEventEx>{};
+        THROW_IF_ERR(pGraph->QueryInterface(IID_IMediaEventEx, (void**)&_media_event));
+        long     evCode;
+        LONG_PTR param1, param2;
+        bool     disconnected = false;
+
+        while (S_OK == _media_event->GetEvent(&evCode, &param1, &param2, 0))
+        {
+            if (evCode == EC_ERRORABORT)
+                disconnected = true;
+            _media_event->FreeEventParams(evCode, param1, param2);
+        }
+        if (disconnected)
+            throw CaptureError{Error_WebcamAlreadyUsedInAnotherApplication{}};
+    }
 }
 
 static int clamp(int value)
@@ -518,7 +506,6 @@ CaptureImpl::~CaptureImpl()
 {
     _media_control->Stop();
     _media_control->Release();
-    _media_event->Release();
 }
 
 // #if defined(GCC) || defined(__clang__)

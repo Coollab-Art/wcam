@@ -49,16 +49,12 @@ public:
     auto image() -> MaybeImage override;
 
 private:
-    auto is_disconnected() -> bool;
-
-private:
     MaybeImage _image{ImageNotInitYet{}};
     img::Size  _resolution;
     GUID       _video_format; // At the moment we support MEDIASUBTYPE_RGB24 and MEDIASUBTYPE_NV12 (which is required for the OBS virtual camera)
     std::mutex _mutex{};
 
     IMediaControl* _media_control{};
-    IMediaEventEx* _media_event{};
 
     ULONG _ref_count{0};
 };
