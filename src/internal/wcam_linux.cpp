@@ -132,16 +132,103 @@ auto grab_all_infos_impl() -> std::vector<Info>
 CaptureImpl::CaptureImpl(DeviceId const& id, img::Size const& resolution)
     : _resolution{resolution}
 {
-    openDevice(id);
-    initDevice();
-    startCapture();
+    fd = open(id.as_string().c_str(), O_RDWR);
+    if (fd == -1)
+    {
+        perror("Failed to open device");
+        exit(EXIT_FAILURE);
+    }
+    struct v4l2_capability cap;
+    if (ioctl(fd, VIDIOC_QUERYCAP, &cap) == -1)
+    {
+        perror("Failed to query capabilities");
+        exit(EXIT_FAILURE);
+    }
+
+    struct v4l2_format fmt;
+    memset(&fmt, 0, sizeof(fmt));
+    fmt.type                = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    fmt.fmt.pix.width       = _resolution.width();
+    fmt.fmt.pix.height      = _resolution.height();
+    fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
+    fmt.fmt.pix.field       = V4L2_FIELD_NONE;
+
+    if (ioctl(fd, VIDIOC_S_FMT, &fmt) == -1)
+    {
+        perror("Failed to set format");
+    }
+
+    struct v4l2_requestbuffers req;
+    memset(&req, 0, sizeof(req));
+    req.count  = 1;
+    req.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    req.memory = V4L2_MEMORY_MMAP;
+
+    if (ioctl(fd, VIDIOC_REQBUFS, &req) == -1)
+    {
+        perror("Failed to request buffers");
+    }
+
+    buffers.resize(req.count);
+    for (size_t i = 0; i < req.count; ++i)
+    {
+        struct v4l2_buffer buf;
+        memset(&buf, 0, sizeof(buf));
+        buf.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        buf.memory = V4L2_MEMORY_MMAP;
+        buf.index  = i;
+
+        if (ioctl(fd, VIDIOC_QUERYBUF, &buf) == -1)
+        {
+            perror("Failed to query buffer");
+        }
+
+        buffers[i].length = buf.length;
+        buffers[i].start  = mmap(NULL, buf.length, PROT_READ | PROT_WRITE, MAP_SHARED, fd, buf.m.offset);
+        if (buffers[i].start == MAP_FAILED)
+        {
+            perror("Failed to map buffer");
+        }
+    }
+    for (size_t i = 0; i < buffers.size(); ++i)
+    {
+        struct v4l2_buffer buf;
+        memset(&buf, 0, sizeof(buf));
+        buf.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        buf.memory = V4L2_MEMORY_MMAP;
+        buf.index  = i;
+
+        if (ioctl(fd, VIDIOC_QBUF, &buf) == -1)
+        {
+            perror("Failed to queue buffer");
+        }
+    }
+
+    enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    if (ioctl(fd, VIDIOC_STREAMON, &type) == -1)
+    {
+        perror("Failed to start capture");
+    }
 }
 
 CaptureImpl::~CaptureImpl()
 {
-    stopCapture();
-    uninitDevice();
-    closeDevice();
+    enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    if (ioctl(fd, VIDIOC_STREAMOFF, &type) == -1)
+    {
+        perror("Failed to stop capture");
+    }
+    for (size_t i = 0; i < buffers.size(); ++i)
+    {
+        if (munmap(buffers[i].start, buffers[i].length) == -1)
+        {
+            perror("Failed to unmap buffer");
+        }
+    }
+    if (close(fd) == -1)
+    {
+        perror("Failed to close device");
+    }
 }
 
 auto CaptureImpl::image() -> MaybeImage
@@ -179,132 +266,6 @@ auto CaptureImpl::getFrame() -> uint8_t*
         perror("Failed to queue buffer");
     }
     return rgb_data;
-}
-
-void CaptureImpl::openDevice(DeviceId const& id)
-{
-    fd = open(id.as_string().c_str(), O_RDWR);
-    if (fd == -1)
-    {
-        perror("Failed to open device");
-        exit(EXIT_FAILURE);
-    }
-}
-
-void CaptureImpl::initDevice()
-{
-    struct v4l2_capability cap;
-    if (ioctl(fd, VIDIOC_QUERYCAP, &cap) == -1)
-    {
-        perror("Failed to query capabilities");
-        exit(EXIT_FAILURE);
-    }
-
-    struct v4l2_format fmt;
-    memset(&fmt, 0, sizeof(fmt));
-    fmt.type                = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    fmt.fmt.pix.width       = _resolution.width();
-    fmt.fmt.pix.height      = _resolution.height();
-    fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
-    fmt.fmt.pix.field       = V4L2_FIELD_NONE;
-
-    if (ioctl(fd, VIDIOC_S_FMT, &fmt) == -1)
-    {
-        perror("Failed to set format");
-        exit(EXIT_FAILURE);
-    }
-
-    struct v4l2_requestbuffers req;
-    memset(&req, 0, sizeof(req));
-    req.count  = 1;
-    req.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    req.memory = V4L2_MEMORY_MMAP;
-
-    if (ioctl(fd, VIDIOC_REQBUFS, &req) == -1)
-    {
-        perror("Failed to request buffers");
-        exit(EXIT_FAILURE);
-    }
-
-    buffers.resize(req.count);
-    for (size_t i = 0; i < req.count; ++i)
-    {
-        struct v4l2_buffer buf;
-        memset(&buf, 0, sizeof(buf));
-        buf.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        buf.memory = V4L2_MEMORY_MMAP;
-        buf.index  = i;
-
-        if (ioctl(fd, VIDIOC_QUERYBUF, &buf) == -1)
-        {
-            perror("Failed to query buffer");
-            exit(EXIT_FAILURE);
-        }
-
-        buffers[i].length = buf.length;
-        buffers[i].start  = mmap(NULL, buf.length, PROT_READ | PROT_WRITE, MAP_SHARED, fd, buf.m.offset);
-        if (buffers[i].start == MAP_FAILED)
-        {
-            perror("Failed to map buffer");
-            exit(EXIT_FAILURE);
-        }
-    }
-}
-
-void CaptureImpl::startCapture()
-{
-    for (size_t i = 0; i < buffers.size(); ++i)
-    {
-        struct v4l2_buffer buf;
-        memset(&buf, 0, sizeof(buf));
-        buf.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        buf.memory = V4L2_MEMORY_MMAP;
-        buf.index  = i;
-
-        if (ioctl(fd, VIDIOC_QBUF, &buf) == -1)
-        {
-            perror("Failed to queue buffer");
-            exit(EXIT_FAILURE);
-        }
-    }
-
-    enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    if (ioctl(fd, VIDIOC_STREAMON, &type) == -1)
-    {
-        perror("Failed to start capture");
-        exit(EXIT_FAILURE);
-    }
-}
-
-void CaptureImpl::stopCapture()
-{
-    enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    if (ioctl(fd, VIDIOC_STREAMOFF, &type) == -1)
-    {
-        perror("Failed to stop capture");
-        exit(EXIT_FAILURE);
-    }
-}
-
-void CaptureImpl::uninitDevice()
-{
-    for (size_t i = 0; i < buffers.size(); ++i)
-    {
-        if (munmap(buffers[i].start, buffers[i].length) == -1)
-        {
-            perror("Failed to unmap buffer");
-            exit(EXIT_FAILURE);
-        }
-    }
-}
-
-void CaptureImpl::closeDevice()
-{
-    if (close(fd) == -1)
-    {
-        perror("Failed to close device");
-        exit(EXIT_FAILURE);
-    }
 }
 
 } // namespace wcam::internal

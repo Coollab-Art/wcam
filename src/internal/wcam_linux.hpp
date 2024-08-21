@@ -23,9 +23,6 @@ private:
     void openDevice(DeviceId const& id);
     void initDevice();
     void startCapture();
-    void stopCapture();
-    void uninitDevice();
-    void closeDevice();
 
 private:
     MaybeImage _image{ImageNotInitYet{}};
