@@ -440,18 +440,13 @@ auto CaptureImpl::image() -> MaybeImage
 {
     std::lock_guard lock{_mutex};
 
-    // if (std::holds_alternative<CaptureError>(_image))
-    // {
-    //     THROW_IF_ERR(_media_control->Run());
-    //     if (is_disconnected())
-    //         _image = CaptureError::WebcamAlreadyUsedInAnotherApplication;
-    // }
+    // auto res = std::move(_image);
+    // if (std::holds_alternative<img::Image>(res))
+    //     _image = NoNewImageAvailableYet{}; // Make sure we know that the current image has been consumed
 
-    auto res = std::move(_image);
-    if (std::holds_alternative<img::Image>(res))
-        _image = NoNewImageAvailableYet{}; // Make sure we know that the current image has been consumed
+    // TODO indicate if the image has already been received ? or let users handle it ? by checking the address in the shared ptr
 
-    return res; // We don't use std::move here because it would prevent copy elision
+    return _image; // We don't use std::move here because it would prevent copy elision
 }
 
 CaptureImpl::~CaptureImpl()

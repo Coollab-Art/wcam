@@ -87,13 +87,13 @@ public:
             static std::string         error_msg{};
             std::visit(
                 wcam::overloaded{
-                    [&](img::Image const& image) {
-                        width     = image.width();
-                        height    = image.height();
-                        flip_y    = image.row_order() == img::FirstRowIs::Bottom;
+                    [&](std::shared_ptr<img::Image const> const& image) {
+                        width     = image->width();
+                        height    = image->height();
+                        flip_y    = image->row_order() == img::FirstRowIs::Bottom;
                         error_msg = "";
                         glBindTexture(GL_TEXTURE_2D, texture_id);
-                        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, static_cast<GLsizei>(image.width()), static_cast<GLsizei>(image.height()), 0, image.pixel_format() == img::PixelFormat::RGB ? GL_RGB : GL_BGR, GL_UNSIGNED_BYTE, image.data());
+                        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, static_cast<GLsizei>(image->width()), static_cast<GLsizei>(image->height()), 0, image->pixel_format() == img::PixelFormat::RGB ? GL_RGB : GL_BGR, GL_UNSIGNED_BYTE, image->data());
                     },
                     [](wcam::CaptureError const& error) {
                         error_msg = wcam::to_string(error);

@@ -104,7 +104,7 @@ public:
         }
         {
             std::unique_lock lock{_mutex};
-            _image = img::Image{_resolution, pixel_format, row_order, buffer};
+            _image = std::make_shared<img::Image>(_resolution, pixel_format, row_order, buffer);
         }
         return 0;
     }
