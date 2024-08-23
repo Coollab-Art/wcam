@@ -1,5 +1,5 @@
+#include "ImageFactory.hpp"
 #if defined(_WIN32)
-#include "wcam_windows.hpp"
 #include <cstdlib>
 #include <format>
 #include <source_location>
@@ -9,6 +9,7 @@
 #include <unordered_map>
 #include "make_device_id.hpp"
 #include "wcam/wcam.hpp"
+#include "wcam_windows.hpp"
 
 /// NB: we use DirectShow and not MediaFoundation
 /// because OBS Virtual Camera only works with DirectShow
@@ -53,7 +54,7 @@ static auto hr2err(HRESULT hr) -> std::string
 
 static void throw_error(HRESULT hr, std::string_view code_that_failed, std::source_location location = std::source_location::current())
 {
-    throw std::runtime_error{std::format("{}(During `{}`, at {}({}:{}))", hr2err(hr), code_that_failed, location.file_name(), location.line(), location.column())};
+    throw CaptureError{Error_Unknown{std::format("{}(During `{}`, at {}({}:{}))", hr2err(hr), code_that_failed, location.file_name(), location.line(), location.column())}};
 }
 
 #define THROW_IF_ERR(exp) /*NOLINT(*macro*)*/ \
@@ -363,12 +364,6 @@ CaptureImpl::CaptureImpl(DeviceId const& device_id, img::Size const& requested_r
 
     // Add the sample grabber to the graph
     THROW_IF_ERR(pGraph->AddFilter(pSampleGrabberFilter, L"Sample Grabber"));
-
-    // 5. Render the Stream
-    AutoRelease<IBaseFilter> pNullRenderer{CLSID_NullRenderer};
-    THROW_IF_ERR(pGraph->AddFilter(pNullRenderer, L"Null Renderer"));
-
-    THROW_IF_ERR(pBuilder->RenderStream(&PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, pCap, pSampleGrabberFilter, pNullRenderer)); // Check that PIN_CATEGORY_PREVIEW is indeed more performant than PIN_CATEGORY_CAPTURE
     // 6. Retrieve the Video Information Header
 
     // TODO check if this does anything //EXP - lets try setting the sync source to null - and make it run as fast as possible
@@ -385,27 +380,15 @@ CaptureImpl::CaptureImpl(DeviceId const& device_id, img::Size const& requested_r
     //         pMediaFilter->Release();
     //     }
     // }
+    // 5. Render the Stream
+    AutoRelease<IBaseFilter> pNullRenderer{CLSID_NullRenderer};
+    THROW_IF_ERR(pGraph->AddFilter(pNullRenderer, L"Null Renderer"));
 
-    AM_MEDIA_TYPE mtGrabbed;
-    THROW_IF_ERR(pSampleGrabber->GetConnectedMediaType(&mtGrabbed));
-
-    VIDEOINFOHEADER* pVih = (VIDEOINFOHEADER*)mtGrabbed.pbFormat;
-    _resolution           = img::Size{
-        static_cast<img::Size::DataType>(pVih->bmiHeader.biWidth),
-        static_cast<img::Size::DataType>(pVih->bmiHeader.biHeight),
-    };
-
-    assert(
-        (_video_format == MEDIASUBTYPE_RGB24 && pVih->bmiHeader.biSizeImage == _resolution.pixels_count() * 3)
-        || (_video_format == MEDIASUBTYPE_NV12 && pVih->bmiHeader.biSizeImage == _resolution.pixels_count() * 3 / 2)
-    );
+    THROW_IF_ERR(pBuilder->RenderStream(&PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, pCap, pSampleGrabberFilter, pNullRenderer)); // Check that PIN_CATEGORY_PREVIEW is indeed more performant than PIN_CATEGORY_CAPTURE
 
     // 7. Start the Graph
-
-    THROW_IF_ERR(pSampleGrabber->SetCallback(this, 1));
     THROW_IF_ERR(pGraph->QueryInterface(IID_IMediaControl, (void**)&_media_control));
     THROW_IF_ERR(_media_control->Run());
-
     {
         auto _media_event = AutoRelease<IMediaEventEx>{};
         THROW_IF_ERR(pGraph->QueryInterface(IID_IMediaEventEx, (void**)&_media_event));
@@ -422,69 +405,46 @@ CaptureImpl::CaptureImpl(DeviceId const& device_id, img::Size const& requested_r
         if (disconnected)
             throw CaptureError{Error_WebcamAlreadyUsedInAnotherApplication{}};
     }
-}
 
-static int clamp(int value)
-{
-    return value < 0 ? 0 : (value > 255 ? 255 : value);
-}
+    AM_MEDIA_TYPE mtGrabbed;
+    THROW_IF_ERR(pSampleGrabber->GetConnectedMediaType(&mtGrabbed));
 
-static void NV12ToRGB24(uint8_t* nv12Data, uint8_t* rgbData, img::Size::DataType width, img::Size::DataType height)
-{
-    img::Size::DataType frameSize = width * height;
+    VIDEOINFOHEADER* pVih = (VIDEOINFOHEADER*)mtGrabbed.pbFormat;
+    _resolution           = img::Size{
+        static_cast<img::Size::DataType>(pVih->bmiHeader.biWidth),
+        static_cast<img::Size::DataType>(pVih->bmiHeader.biHeight),
+    };
 
-    uint8_t* yPlane  = nv12Data;
-    uint8_t* uvPlane = nv12Data + frameSize;
+    assert(
+        (_video_format == MEDIASUBTYPE_RGB24 && pVih->bmiHeader.biSizeImage == _resolution.pixels_count() * 3)
+        || (_video_format == MEDIASUBTYPE_NV12 && pVih->bmiHeader.biSizeImage == _resolution.pixels_count() * 3 / 2)
+    );
 
-    for (img::Size::DataType j = 0; j < height; j++)
-    {
-        for (img::Size::DataType i = 0; i < width; i++)
-        {
-            img::Size::DataType yIndex  = j * width + i;
-            img::Size::DataType uvIndex = (j / 2) * (width / 2) + (i / 2);
-
-            uint8_t Y = yPlane[yIndex];
-            uint8_t U = uvPlane[uvIndex * 2];
-            uint8_t V = uvPlane[uvIndex * 2 + 1];
-
-            int C = Y - 16;
-            int D = U - 128;
-            int E = V - 128;
-
-            int R = clamp((298 * C + 409 * E + 128) >> 8);
-            int G = clamp((298 * C - 100 * D - 208 * E + 128) >> 8);
-            int B = clamp((298 * C + 516 * D + 128) >> 8);
-
-            rgbData[(i + j * width) * 3 + 0] = (uint8_t)R;
-            rgbData[(i + j * width) * 3 + 1] = (uint8_t)G;
-            rgbData[(i + j * width) * 3 + 2] = (uint8_t)B;
-        }
-    }
+    THROW_IF_ERR(pSampleGrabber->SetCallback(this, 1));
 }
 
 STDMETHODIMP CaptureImpl::BufferCB(double /* Time */, BYTE* pBuffer, long BufferLen)
 {
-    auto*            buffer = new uint8_t[_resolution.pixels_count() * 3]; // NOLINT(*owning-memory)
-    img::PixelFormat pixel_format;
-    img::FirstRowIs  row_order;
+    auto image = image_factory().make_image(); // TODO get the image from the pool of available images, to avoid recreating an image all the time (eg creating an opengl texture each time, or allocating a buffer)
+    image->set_resolution(_resolution);
     if (_video_format == MEDIASUBTYPE_RGB24)
     {
-        assert(_resolution.pixels_count() * 3 == static_cast<img::Size::DataType>(BufferLen));
-        memcpy(buffer, pBuffer, BufferLen * sizeof(uint8_t));
-        pixel_format = img::PixelFormat::BGR;
-        row_order    = img::FirstRowIs::Bottom;
+        image->set_row_order(img::FirstRowIs::Bottom);
+        image->set_data(ImageDataView<BGR24>{pBuffer, static_cast<size_t>(BufferLen), _resolution});
+    }
+    else if (_video_format == MEDIASUBTYPE_NV12)
+    {
+        image->set_row_order(img::FirstRowIs::Top);
+        image->set_data(ImageDataView<NV12>{pBuffer, static_cast<size_t>(BufferLen), _resolution});
     }
     else
     {
-        assert(_video_format == MEDIASUBTYPE_NV12);
-        assert(_resolution.pixels_count() * 3 / 2 == static_cast<img::Size::DataType>(BufferLen));
-        NV12ToRGB24(pBuffer, buffer, _resolution.width(), _resolution.height());
-        pixel_format = img::PixelFormat::RGB;
-        row_order    = img::FirstRowIs::Top;
+        assert(false && "Unsupported pixel format! Please contact the library authors to ask them to add this format.");
     }
+
     {
         std::unique_lock lock{_mutex};
-        _image = std::make_shared<img::Image>(_resolution, pixel_format, row_order, buffer);
+        _image = image;
     }
     return 0;
 }
@@ -494,7 +454,7 @@ auto CaptureImpl::image() -> MaybeImage
     std::lock_guard lock{_mutex};
 
     // auto res = std::move(_image);
-    // if (std::holds_alternative<img::Image>(res))
+    // if (std::holds_alternative<Image>(res))
     //     _image = NoNewImageAvailableYet{}; // Make sure we know that the current image has been consumed
 
     // TODO indicate if the image has already been received ? or let users handle it ? by checking the address in the shared ptr

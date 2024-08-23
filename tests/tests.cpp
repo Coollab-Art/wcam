@@ -1,31 +1,111 @@
 #include <exception>
 #include <iostream>
+#include <mutex>
 #include <quick_imgui/quick_imgui.hpp>
 #include "glad/glad.h"
 #include "imgui.h"
 #include "wcam/wcam.hpp"
 
-auto make_texture() -> GLuint
+class TexturePool { // TODO not needed, Image can create their own texture (deferred, on the main thread)
+public:
+    TexturePool()
+    {
+        _ids.resize(20);
+        for (auto& id : _ids)
+        {
+            glGenTextures(1, &id);
+            glBindTexture(GL_TEXTURE_2D, id);
+
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        }
+    }
+
+    auto take() -> GLuint
+    {
+        std::scoped_lock lock{_mutex};
+
+        if (_ids.empty())
+        {
+            assert(false);
+            return 0;
+        }
+        auto const res = _ids.back();
+        _ids.pop_back();
+        return res;
+    }
+
+    void give_back(GLuint id)
+    {
+        std::scoped_lock lock{_mutex};
+        _ids.push_back(id);
+    }
+
+    // ~TexturePool{
+    // TODO
+    // glDeleteTextures(1, &_texture_id);
+    // }
+
+private:
+    std::vector<GLuint> _ids{};
+    std::mutex          _mutex{};
+};
+
+auto texture_pool() -> TexturePool&
 {
-    GLuint textureID; // NOLINT(*init-variables)
-    glGenTextures(1, &textureID);
-    glBindTexture(GL_TEXTURE_2D, textureID);
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-    return textureID;
+    static auto instance = TexturePool{};
+    return instance;
 }
+
+class Image : public wcam::Image {
+public:
+    Image()
+        : _texture_id{texture_pool().take()}
+    {
+    }
+
+    ~Image() override
+    {
+        texture_pool().give_back(_texture_id);
+    }
+
+    auto imgui_texture_id() const -> ImTextureID
+    {
+        if (_gen_texture.has_value())
+        {
+            (*_gen_texture)();
+            _gen_texture.reset();
+        }
+        return static_cast<ImTextureID>(reinterpret_cast<void*>(static_cast<uint64_t>(_texture_id))); // NOLINT(performance-no-int-to-ptr, *reinterpret-cast)
+    }
+
+    void set_data(wcam::ImageDataView<wcam::RGB24> rgb_data) override
+    {
+        _gen_texture = [owned_rgb_data = rgb_data.copy(), this]() {
+            glBindTexture(GL_TEXTURE_2D, _texture_id);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, static_cast<GLsizei>(owned_rgb_data.resolution().width()), static_cast<GLsizei>(owned_rgb_data.resolution().height()), 0, GL_RGB, GL_UNSIGNED_BYTE, owned_rgb_data.data());
+        };
+    }
+
+    void set_data(wcam::ImageDataView<wcam::BGR24> bgr_data) override
+    {
+        _gen_texture = [owned_bgr_data = bgr_data.copy(), this]() {
+            glBindTexture(GL_TEXTURE_2D, _texture_id);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, static_cast<GLsizei>(owned_bgr_data.resolution().width()), static_cast<GLsizei>(owned_bgr_data.resolution().height()), 0, GL_BGR, GL_UNSIGNED_BYTE, owned_bgr_data.data());
+        };
+    }
+
+private:
+    GLuint                                       _texture_id{};
+    mutable std::optional<std::function<void()>> _gen_texture{}; // Since OpenGL calls must happen on the main thread, when set_data is called (from another thread) we just store the thing to do in this function, and call it later, on the main thread
+};
 
 class WebcamWindow {
 public:
     void update()
     {
-        if (texture_id == 0)
-            texture_id = make_texture();
-
         timer.imgui_plot();
         timer.start();
 
@@ -80,20 +160,13 @@ public:
         }
         if (capture.has_value())
         {
-            auto const                 maybe_image = capture->image();
-            static img::Size::DataType width{};
-            static img::Size::DataType height{};
-            static bool                flip_y{};
-            static std::string         error_msg{};
+            auto const                                maybe_image = capture->image();
+            static std::shared_ptr<wcam::Image const> image{};
+            static std::string                        error_msg{};
             std::visit(
                 wcam::overloaded{
-                    [&](std::shared_ptr<img::Image const> const& image) {
-                        width     = image->width();
-                        height    = image->height();
-                        flip_y    = image->row_order() == img::FirstRowIs::Bottom;
-                        error_msg = "";
-                        glBindTexture(GL_TEXTURE_2D, texture_id);
-                        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, static_cast<GLsizei>(image->width()), static_cast<GLsizei>(image->height()), 0, image->pixel_format() == img::PixelFormat::RGB ? GL_RGB : GL_BGR, GL_UNSIGNED_BYTE, image->data());
+                    [&](std::shared_ptr<wcam::Image const> const& imag) {
+                        image = imag;
                     },
                     [](wcam::CaptureError const& error) {
                         error_msg = wcam::to_string(error);
@@ -104,18 +177,22 @@ public:
                     [](wcam::ImageNotInitYet) { // TODO display a "LOADING"
                         error_msg = "";
                         // Reset the image, otherwise it will show briefly when opening the next webcam (while the new capture hasn't returned any image yet) / when a capture needs to restart because the camera was unplugged and then plugged back
-                        width  = 0;
-                        height = 0;
-                        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 0, 0, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+                        image = nullptr;
                     }
                 },
                 maybe_image
             );
             if (error_msg.empty())
             {
-                auto const w = ImGui::GetContentRegionAvail().x;
-                ImGui::Image(static_cast<ImTextureID>(reinterpret_cast<void*>(static_cast<uint64_t>(texture_id))), ImVec2{w, w / static_cast<float>(width) * static_cast<float>(height)}, flip_y ? ImVec2(0., 1.) : ImVec2(0., 0.), flip_y ? ImVec2(1., 0.) : ImVec2(1., 1.)); // NOLINT(performance-no-int-to-ptr, *reinterpret-cast)
-                ImGui::Text("%d x %d", width, height);
+                if (image != nullptr)
+                {
+                    auto const& im     = *static_cast<Image const*>(image.get());
+                    bool const  flip_y = im.row_order() == img::FirstRowIs::Bottom;
+
+                    auto const w = ImGui::GetContentRegionAvail().x;
+                    ImGui::Image(im.imgui_texture_id(), ImVec2{w, w / static_cast<float>(im.width()) * static_cast<float>(im.height())}, flip_y ? ImVec2(0., 1.) : ImVec2(0., 0.), flip_y ? ImVec2(1., 0.) : ImVec2(1., 1.));
+                    ImGui::Text("%d x %d", im.width(), im.height());
+                }
             }
             else
             {
@@ -130,7 +207,6 @@ public:
     }
 
 private:
-    GLuint                            texture_id{0};
     quick_imgui::AverageTime          timer{};
     std::optional<wcam::SharedWebcam> capture;
     // TODO update the explanation about how we use KeepLibraryAlive
@@ -142,8 +218,16 @@ private:
 
 auto main() -> int
 {
+    wcam::set_image_type<Image>();
     auto windows = std::vector<WebcamWindow>(3);
+    bool is_first_frame{true};
     quick_imgui::loop("webcam_info tests", [&]() {
+        if (is_first_frame)
+        {
+            texture_pool(); // Init the texture pool, on the main thread to make sure all the textures can be successfully created
+            is_first_frame = false;
+        }
+
         ImGui::Begin("main");
         if (ImGui::Button("Add"))
             windows.emplace_back();
