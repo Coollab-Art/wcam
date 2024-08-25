@@ -13,7 +13,7 @@ struct Buffer {
 
 class CaptureImpl : public ICaptureImpl {
 public:
-    CaptureImpl(DeviceId const& id, img::Size const& resolution);
+    CaptureImpl(DeviceId const& id, Resolution const& resolution);
     ~CaptureImpl() override;
 
     auto image() -> MaybeImage override;
@@ -26,7 +26,7 @@ private:
 
 private:
     MaybeImage _image{ImageNotInitYet{}};
-    img::Size  _resolution;
+    Resolution _resolution;
     std::mutex _mutex{};
 
     int                 fd{-1};

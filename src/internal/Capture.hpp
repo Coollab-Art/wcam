@@ -8,7 +8,7 @@ namespace wcam::internal {
 
 class Capture {
 public:
-    Capture(DeviceId const& id, img::Size const& resolution);
+    Capture(DeviceId const& id, Resolution const& resolution);
 
     [[nodiscard]] auto image() -> MaybeImage { return _pimpl->image(); }
 

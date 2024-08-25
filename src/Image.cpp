@@ -15,20 +15,20 @@ static int clamp(int value)
 
 static auto NV12ToRGB24(uint8_t const* nv12Data, Resolution resolution) -> std::unique_ptr<uint8_t const>
 {
-    auto*               rgbData   = new uint8_t[resolution.pixels_count() * 3];
-    img::Size::DataType frameSize = resolution.pixels_count();
-    auto const          width     = resolution.width();
-    auto const          height    = resolution.height();
+    auto*                rgbData   = new uint8_t[resolution.pixels_count() * 3];
+    Resolution::DataType frameSize = resolution.pixels_count();
+    auto const           width     = resolution.width();
+    auto const           height    = resolution.height();
 
     uint8_t const* yPlane  = nv12Data;
     uint8_t const* uvPlane = nv12Data + frameSize;
 
-    for (img::Size::DataType j = 0; j < height; j++)
+    for (Resolution::DataType j = 0; j < height; j++)
     {
-        for (img::Size::DataType i = 0; i < width; i++)
+        for (Resolution::DataType i = 0; i < width; i++)
         {
-            img::Size::DataType yIndex  = j * width + i;
-            img::Size::DataType uvIndex = (j / 2) * (width / 2) + (i / 2);
+            Resolution::DataType yIndex  = j * width + i;
+            Resolution::DataType uvIndex = (j / 2) * (width / 2) + (i / 2);
 
             uint8_t Y = yPlane[yIndex];
             uint8_t U = uvPlane[uvIndex * 2];

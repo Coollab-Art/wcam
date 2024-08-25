@@ -16,10 +16,6 @@ endif()
 file(GLOB_RECURSE SRC_FILES CONFIGURE_DEPENDS src/*.cpp)
 target_sources(wcam PRIVATE ${SRC_FILES})
 
-# ---Add img library---
-add_subdirectory(lib/img)
-target_link_libraries(wcam PUBLIC img::img)
-
 # ---Set warning level---
 if(MSVC)
     target_compile_options(wcam PRIVATE /W4)

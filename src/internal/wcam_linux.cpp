@@ -43,9 +43,9 @@ void yuyv_to_rgb(unsigned char* yuyv, unsigned char* rgb, int width, int height)
     }
 }
 
-static auto find_available_resolutions(int const video_device) -> std::vector<img::Size>
+static auto find_available_resolutions(int const video_device) -> std::vector<Resolution>
 {
-    std::vector<img::Size> available_resolutions;
+    std::vector<Resolution> available_resolutions;
 
     v4l2_fmtdesc format_description{};
     format_description.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
@@ -67,7 +67,7 @@ static auto find_available_resolutions(int const video_device) -> std::vector<im
                     // float fps = static_cast<float>(frameInterval.discrete.denominator) / static_cast<float>(frameInterval.discrete.numerator);
                     if (/*fps > 29. &&*/ frame_size.type == V4L2_FRMSIZE_TYPE_DISCRETE)
                     {
-                        available_resolutions.push_back({static_cast<img::Size::DataType>(frame_interval.width), static_cast<img::Size::DataType>(frame_interval.height)});
+                        available_resolutions.push_back({static_cast<Resolution::DataType>(frame_interval.width), static_cast<Resolution::DataType>(frame_interval.height)});
                     }
                 }
                 frame_interval.index++;
@@ -119,7 +119,7 @@ auto grab_all_infos_impl() -> std::vector<Info>
 
         std::string const webcam_name = reinterpret_cast<char const*>(cap.card); // NOLINT(*-pro-type-reinterpret-cast)
 
-        std::vector<img::Size> const available_resolutions = find_available_resolutions(video_device);
+        std::vector<Resolution> const available_resolutions = find_available_resolutions(video_device);
         if (available_resolutions.empty())
             continue;
 
@@ -129,7 +129,7 @@ auto grab_all_infos_impl() -> std::vector<Info>
     return list_webcam_info;
 }
 
-CaptureImpl::CaptureImpl(DeviceId const& id, img::Size const& resolution)
+CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
     : _resolution{resolution}
 {
     fd = open(id.as_string().c_str(), O_RDWR);

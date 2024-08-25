@@ -11,7 +11,7 @@ EXTERN_C const IID IID_ISampleGrabberCB;
 class CaptureImpl : public ISampleGrabberCB
     , public ICaptureImpl {
 public:
-    CaptureImpl(DeviceId const& id, img::Size const& resolution);
+    CaptureImpl(DeviceId const& id, Resolution const& resolution);
     ~CaptureImpl() override;
 
     STDMETHODIMP_(ULONG)
@@ -50,7 +50,7 @@ public:
 
 private:
     MaybeImage _image{ImageNotInitYet{}};
-    img::Size  _resolution;
+    Resolution _resolution;
     GUID       _video_format; // At the moment we support MEDIASUBTYPE_RGB24 and MEDIASUBTYPE_NV12 (which is required for the OBS virtual camera)
     std::mutex _mutex{};
 

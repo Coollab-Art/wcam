@@ -1,15 +1,15 @@
 #pragma once
 #include <vector>
-#include "../../../src/DeviceId.hpp"
-#include "../../../src/Image.hpp"
-#include "../../../src/Info.hpp"
-#include "../../../src/KeepLibraryAlive.hpp"
-#include "../../../src/MaybeImage.hpp"
-#include "../../../src/Resolution.hpp"
-#include "../../../src/SharedWebcam.hpp"
-#include "../../../src/internal/ImageFactory.hpp"
-#include "../../../src/overloaded.hpp"
-#include "img/img.hpp"
+#include "../../src/DeviceId.hpp"
+#include "../../src/FirstRowIs.hpp"
+#include "../../src/Image.hpp"
+#include "../../src/Info.hpp"
+#include "../../src/KeepLibraryAlive.hpp"
+#include "../../src/MaybeImage.hpp"
+#include "../../src/Resolution.hpp"
+#include "../../src/SharedWebcam.hpp"
+#include "../../src/internal/ImageFactory.hpp"
+#include "../../src/overloaded.hpp"
 
 namespace wcam {
 

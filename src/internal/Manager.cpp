@@ -46,7 +46,7 @@ static auto grab_all_infos() -> std::vector<Info>
     for (auto& webcam_info : list_webcams_infos)
     {
         auto& resolutions = webcam_info.resolutions;
-        std::sort(resolutions.begin(), resolutions.end(), [](img::Size const& res_a, img::Size const& res_b) {
+        std::sort(resolutions.begin(), resolutions.end(), [](Resolution const& res_a, Resolution const& res_b) {
             return res_a.width() > res_b.width()
                    || (res_a.width() == res_b.width() && res_a.height() > res_b.height());
         });

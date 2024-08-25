@@ -32,11 +32,11 @@ auto grab_all_infos_impl() -> std::vector<Info> {
 
         for (AVCaptureDevice *device in devices) {
                 std::string deviceName = [[device localizedName] UTF8String];
-                std::vector<img::Size> list_resolution{};
+                std::vector<Resolution> list_resolution{};
 
                 for (AVCaptureDeviceFormat *format in device.formats) {
                     CMVideoDimensions dimensions = CMVideoFormatDescriptionGetDimensions(format.formatDescription);
-                    list_resolution.push_back({static_cast<img::Size::DataType>(dimensions.width), static_cast<img::Size::DataType>(dimensions.height)});
+                    list_resolution.push_back({static_cast<Resolution::DataType>(dimensions.width), static_cast<Resolution::DataType>(dimensions.height)});
                 }
                 list_webcams_infos.push_back({deviceName,make_device_id(deviceName), list_resolution});
         }

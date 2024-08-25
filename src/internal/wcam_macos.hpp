@@ -7,7 +7,7 @@ namespace wcam::internal {
 
 class CaptureImpl : public ICaptureImpl {
 public:
-    CaptureImpl(DeviceId const& id, img::Size const& resolution);
+    CaptureImpl(DeviceId const& id, Resolution const& resolution);
     ~CaptureImpl() override;
 
     auto image() -> MaybeImage override
@@ -26,7 +26,7 @@ private:
 
 private:
     MaybeImage _image{NoNewImageAvailableYet{}};
-    img::Size  _resolution;
+    Resolution _resolution;
     std::mutex _mutex{};
 };
 

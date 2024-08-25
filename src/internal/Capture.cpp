@@ -5,7 +5,7 @@
 
 namespace wcam::internal {
 
-Capture::Capture(DeviceId const& id, img::Size const& resolution)
+Capture::Capture(DeviceId const& id, Resolution const& resolution)
     : _pimpl{std::make_unique<internal::CaptureImpl>(id, resolution)}
 {
 }

@@ -1,6 +1,8 @@
 #pragma once
+#include <cassert>
 #include <cstdint>
 #include <memory>
+#include "FirstRowIs.hpp"
 #include "Resolution.hpp"
 
 namespace wcam {
@@ -74,20 +76,20 @@ public:
     auto operator=(Image&&) noexcept -> Image& = delete;
 
     auto resolution() const -> Resolution { return _resolution; }
-    auto width() const -> img::Size::DataType { return _resolution.width(); }
-    auto height() const -> img::Size::DataType { return _resolution.height(); }
-    auto row_order() const -> img::FirstRowIs { return _row_order; }
+    auto width() const -> Resolution::DataType { return _resolution.width(); }
+    auto height() const -> Resolution::DataType { return _resolution.height(); }
+    auto row_order() const -> wcam::FirstRowIs { return _row_order; }
 
     virtual void set_data(ImageDataView<RGB24>) = 0;
     virtual void set_data(ImageDataView<BGR24>);
     virtual void set_data(ImageDataView<NV12>);
 
     void set_resolution(Resolution resolution) { _resolution = resolution; }
-    void set_row_order(img::FirstRowIs row_order) { _row_order = row_order; }
+    void set_row_order(wcam::FirstRowIs row_order) { _row_order = row_order; }
 
 private:
-    Resolution      _resolution{};
-    img::FirstRowIs _row_order{};
+    Resolution       _resolution{};
+    wcam::FirstRowIs _row_order{};
 };
 
 } // namespace wcam

@@ -279,7 +279,7 @@ void DeleteMediaType(AM_MEDIA_TYPE* pmt)
 //     return it->second;
 // }
 
-CaptureImpl::CaptureImpl(DeviceId const& device_id, img::Size const& requested_resolution)
+CaptureImpl::CaptureImpl(DeviceId const& device_id, Resolution const& requested_resolution)
 {
     CoInitializeIFN();
 
@@ -410,9 +410,9 @@ CaptureImpl::CaptureImpl(DeviceId const& device_id, img::Size const& requested_r
     THROW_IF_ERR(pSampleGrabber->GetConnectedMediaType(&mtGrabbed));
 
     VIDEOINFOHEADER* pVih = (VIDEOINFOHEADER*)mtGrabbed.pbFormat;
-    _resolution           = img::Size{
-        static_cast<img::Size::DataType>(pVih->bmiHeader.biWidth),
-        static_cast<img::Size::DataType>(pVih->bmiHeader.biHeight),
+    _resolution           = Resolution{
+        static_cast<Resolution::DataType>(pVih->bmiHeader.biWidth),
+        static_cast<Resolution::DataType>(pVih->bmiHeader.biHeight),
     };
 
     assert(
@@ -429,12 +429,12 @@ STDMETHODIMP CaptureImpl::BufferCB(double /* Time */, BYTE* pBuffer, long Buffer
     image->set_resolution(_resolution);
     if (_video_format == MEDIASUBTYPE_RGB24)
     {
-        image->set_row_order(img::FirstRowIs::Bottom);
+        image->set_row_order(wcam::FirstRowIs::Bottom);
         image->set_data(ImageDataView<BGR24>{pBuffer, static_cast<size_t>(BufferLen), _resolution});
     }
     else if (_video_format == MEDIASUBTYPE_NV12)
     {
-        image->set_row_order(img::FirstRowIs::Top);
+        image->set_row_order(wcam::FirstRowIs::Top);
         image->set_data(ImageDataView<NV12>{pBuffer, static_cast<size_t>(BufferLen), _resolution});
     }
     else
@@ -473,9 +473,9 @@ CaptureImpl::~CaptureImpl()
 // #pragma GCC diagnostic ignored "-Wlanguage-extension-token"
 // #endif
 
-static auto get_video_parameters(IBaseFilter* pCaptureFilter) -> std::vector<img::Size>
+static auto get_video_parameters(IBaseFilter* pCaptureFilter) -> std::vector<Resolution>
 {
-    auto available_resolutions = std::vector<img::Size>{};
+    auto available_resolutions = std::vector<Resolution>{};
 
     auto pEnumPins = AutoRelease<IEnumPins>{};
     THROW_IF_ERR(pCaptureFilter->EnumPins(&pEnumPins));
@@ -502,7 +502,7 @@ static auto get_video_parameters(IBaseFilter* pCaptureFilter) -> std::vector<img
             if (pmtConfig->formattype != FORMAT_VideoInfo)
                 continue;
             auto* pVih = reinterpret_cast<VIDEOINFOHEADER*>(pmtConfig->pbFormat); // NOLINT(*-pro-type-reinterpret-cast)
-            available_resolutions.push_back({static_cast<img::Size::DataType>(pVih->bmiHeader.biWidth), static_cast<img::Size::DataType>(pVih->bmiHeader.biHeight)});
+            available_resolutions.push_back({static_cast<Resolution::DataType>(pVih->bmiHeader.biWidth), static_cast<Resolution::DataType>(pVih->bmiHeader.biHeight)});
         }
     }
 
@@ -519,7 +519,7 @@ auto grab_all_infos_impl() -> std::vector<Info>
     if (pEnum == nullptr) // Might still be nullptr after CreateClassEnumerator if the VideoInputDevice category is empty or missing (https://learn.microsoft.com/en-us/previous-versions/ms784969(v=vs.85))
         return {};
 
-    thread_local auto resolutions_cache = std::unordered_map<std::string, std::vector<img::Size>>{}; // This cache limits the number of times we will allocate IBaseFilter which seems to leak because of a Windows bug.
+    thread_local auto resolutions_cache = std::unordered_map<std::string, std::vector<Resolution>>{}; // This cache limits the number of times we will allocate IBaseFilter which seems to leak because of a Windows bug.
 
     auto infos = std::vector<Info>{};
 
@@ -532,7 +532,7 @@ auto grab_all_infos_impl() -> std::vector<Info>
         // }
         // if (SUCCEEDED(hr))
         {
-            auto       available_resolutions = std::vector<img::Size>{};
+            auto       available_resolutions = std::vector<Resolution>{};
             auto const webcam_name           = find_webcam_name(pMoniker);
             auto const it                    = resolutions_cache.find(webcam_name);
             if (it != resolutions_cache.end())

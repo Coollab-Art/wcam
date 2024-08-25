@@ -187,7 +187,7 @@ public:
                 if (image != nullptr)
                 {
                     auto const& im     = *static_cast<Image const*>(image.get());
-                    bool const  flip_y = im.row_order() == img::FirstRowIs::Bottom;
+                    bool const  flip_y = im.row_order() == wcam::FirstRowIs::Bottom;
 
                     auto const w = ImGui::GetContentRegionAvail().x;
                     ImGui::Image(im.imgui_texture_id(), ImVec2{w, w / static_cast<float>(im.width()) * static_cast<float>(im.height())}, flip_y ? ImVec2(0., 1.) : ImVec2(0., 0.), flip_y ? ImVec2(1., 0.) : ImVec2(1., 1.));
