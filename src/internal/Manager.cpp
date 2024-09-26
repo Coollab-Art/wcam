@@ -3,9 +3,6 @@
 #include <variant>
 #include "ResolutionsManager.hpp"
 #include "WebcamRequest.hpp"
-#include "wcam_linux.hpp"
-#include "wcam_macos.hpp"
-#include "wcam_windows.hpp"
 
 namespace wcam::internal {
 
@@ -61,6 +58,7 @@ auto Manager::infos() const -> std::vector<Info>
     return _infos;
 }
 
+/// Iterates over the map + Might add a new element to the map
 auto Manager::open_or_get_webcam(DeviceId const& id) -> SharedWebcam
 {
     auto const it = _current_requests.find(id);
@@ -75,6 +73,7 @@ auto Manager::open_or_get_webcam(DeviceId const& id) -> SharedWebcam
     return SharedWebcam{request};
 }
 
+/// Iterates over the map + might modify an element of the map
 void Manager::restart_capture(DeviceId const& id)
 {
     std::scoped_lock lock{_captures_mutex};
@@ -106,6 +105,7 @@ auto Manager::is_plugged_in(DeviceId const& id) const -> bool
            });
 }
 
+/// Iterates over the map + might modify an element of the map
 void Manager::update()
 {
     { // TODO do this only every 0.5s, and sleep if we arrive here to fast ?
