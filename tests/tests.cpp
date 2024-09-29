@@ -136,8 +136,7 @@ public:
                     if (ImGui::Selectable(wcam::to_string(resolution).c_str(), is_selected))
                         wcam::set_selected_resolution(info.id, resolution);
 
-                    // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
-                    if (is_selected)
+                    if (is_selected) // Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
                         ImGui::SetItemDefaultFocus();
                 }
                 ImGui::EndCombo();
@@ -145,7 +144,7 @@ public:
 
             if (ImGui::Button("Open webcam"))
             {
-                try
+                try // TODO I think this isn't necessary anymore
                 {
                     capture = wcam::open_webcam(info.id);
                 }
