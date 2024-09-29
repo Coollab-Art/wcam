@@ -3,14 +3,28 @@
 
 namespace wcam {
 
-void Image::set_data(ImageDataView<BGR24>)
-{
-    // TODO
-}
-
 static int clamp(int value)
 {
     return value < 0 ? 0 : (value > 255 ? 255 : value);
+}
+
+static auto BGR24ToRGB24(uint8_t const* bgrData, Resolution resolution) -> std::unique_ptr<uint8_t const>
+{
+    auto*      rgbData = new uint8_t[resolution.pixels_count() * 3];
+    auto const width   = resolution.width();
+    auto const height  = resolution.height();
+
+    for (Resolution::DataType j = 0; j < height; j++)
+    {
+        for (Resolution::DataType i = 0; i < width; i++)
+        {
+            rgbData[(i + j * width) * 3 + 0] = bgrData[(i + j * width) * 3 + 2];
+            rgbData[(i + j * width) * 3 + 1] = bgrData[(i + j * width) * 3 + 1];
+            rgbData[(i + j * width) * 3 + 2] = bgrData[(i + j * width) * 3 + 0];
+        }
+    }
+
+    return std::unique_ptr<uint8_t const>(rgbData);
 }
 
 static auto NV12ToRGB24(uint8_t const* nv12Data, Resolution resolution) -> std::unique_ptr<uint8_t const>
@@ -49,6 +63,12 @@ static auto NV12ToRGB24(uint8_t const* nv12Data, Resolution resolution) -> std::
     }
 
     return std::unique_ptr<uint8_t const>(rgbData);
+}
+
+void Image::set_data(ImageDataView<BGR24> bgrData)
+{
+    std::unique_ptr<uint8_t const> const rgb24_data = BGR24ToRGB24(bgrData.data(), bgrData.resolution());
+    set_data(ImageDataView<RGB24>{rgb24_data.get(), RGB24::data_length(bgrData.resolution()), bgrData.resolution()});
 }
 
 void Image::set_data(ImageDataView<NV12> nv12_data)
