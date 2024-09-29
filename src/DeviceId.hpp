@@ -11,6 +11,8 @@ auto make_device_id(std::string const& id) -> DeviceId;
 
 class DeviceId {
 public:
+    DeviceId() = default;
+
     auto        as_string() const -> std::string const& { return _device_path; }
     friend auto operator==(DeviceId const&, DeviceId const&) -> bool = default;
 
@@ -22,7 +24,7 @@ private:
 
 private:
     friend struct std::hash<DeviceId>;
-    std::string _device_path;
+    std::string _device_path{};
 };
 
 } // namespace wcam
