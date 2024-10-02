@@ -19,12 +19,6 @@ Manager::Manager()
 #endif
 }
 
-void Manager::thread_job(Manager& self)
-{
-    while (!self._wants_to_stop_thread.load())
-        self.update();
-}
-
 Manager::~Manager()
 {
     _wants_to_stop_thread.store(true);
@@ -33,6 +27,12 @@ Manager::~Manager()
 #ifndef NDEBUG
     _managers_alive_count.fetch_add(-1);
 #endif
+}
+
+void Manager::thread_job(Manager& self)
+{
+    while (!self._wants_to_stop_thread.load())
+        self.update();
 }
 
 auto grab_all_infos_impl() -> std::vector<Info>;
@@ -44,8 +44,8 @@ static auto grab_all_infos() -> std::vector<Info>
     {
         auto& resolutions = webcam_info.resolutions;
         std::sort(resolutions.begin(), resolutions.end(), [](Resolution const& res_a, Resolution const& res_b) {
-            return res_a.width() > res_b.width()
-                   || (res_a.width() == res_b.width() && res_a.height() > res_b.height());
+            return res_a.pixels_count() > res_b.pixels_count()
+                   || (res_a.pixels_count() == res_b.pixels_count() && res_a.width() > res_b.width());
         });
         resolutions.erase(std::unique(resolutions.begin(), resolutions.end()), resolutions.end());
     }
@@ -61,6 +61,8 @@ auto Manager::infos() const -> std::vector<Info>
 /// Iterates over the map + Might add a new element to the map
 auto Manager::open_or_get_webcam(DeviceId const& id) -> SharedWebcam
 {
+    std::scoped_lock lock{_captures_mutex};
+
     auto const it = _current_requests.find(id);
     if (it != _current_requests.end())
     {
@@ -74,16 +76,17 @@ auto Manager::open_or_get_webcam(DeviceId const& id) -> SharedWebcam
 }
 
 /// Iterates over the map + might modify an element of the map
-void Manager::restart_capture(DeviceId const& id)
+void Manager::request_a_restart_of_the_capture_if_it_exists(DeviceId const& id)
 {
     std::scoped_lock lock{_captures_mutex};
-    auto const       it = _current_requests.find(id);
+
+    auto const it = _current_requests.find(id);
     if (it == _current_requests.end())
         return;
-    auto const bob = it->second.lock();
-    if (!bob)
+    auto const request = it->second.lock();
+    if (!request)
         return;
-    bob->maybe_capture() = CaptureNotInitYet{};
+    request->maybe_capture() = CaptureNotInitYet{};
 }
 
 auto Manager::default_resolution(DeviceId const& id) const -> Resolution
@@ -116,8 +119,10 @@ void Manager::update()
     }
 
     {
-        auto const       current_requests = _current_requests;
-        std::scoped_lock lock{_captures_mutex}; // TODO shouldn't we lock during the copy only ?
+        auto const current_requests = [&]() { // IIFE
+            std::scoped_lock lock{_captures_mutex};
+            return _current_requests;
+        }();
 
         for (auto const& [_, request_weak_ptr] : current_requests) // Iterate on a copy of _current_requests, because we might add elements in the latter in parallel, and this would mess up the iteration (and we don't want to lock the map, otherwise it would slow down creating a new SharedWebcam)
         {

@@ -144,16 +144,16 @@ public:
 
             if (ImGui::Button("Open webcam"))
             {
-                try // TODO I think this isn't necessary anymore
-                {
-                    capture = wcam::open_webcam(info.id);
-                }
-                catch (std::exception const& e)
-                {
-                    std::cerr << "Exception occurred: " << e.what() << '\n';
-                    capture = std::nullopt;
-                    throw;
-                }
+                // try // TODO I think this isn't necessary anymore
+                // {
+                capture = wcam::open_webcam(info.id);
+                // }
+                // catch (std::exception const& e)
+                // {
+                //     std::cerr << "Exception occurred: " << e.what() << '\n';
+                //     capture = std::nullopt;
+                //     throw;
+                // }
             }
             ImGui::PopID();
         }
