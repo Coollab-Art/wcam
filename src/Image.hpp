@@ -29,9 +29,9 @@ struct NV12 {
 };
 
 template<typename PixelFormatT>
-class UniqueImageData {
+class ImageData {
 public:
-    UniqueImageData(std::shared_ptr<uint8_t const> data, Resolution resolution)
+    ImageData(std::shared_ptr<uint8_t const> data, Resolution resolution)
         : _data{std::move(data)}
         , _resolution{resolution}
     {}
@@ -39,7 +39,7 @@ public:
     auto resolution() const -> Resolution { return _resolution; }
 
 private:
-    std::shared_ptr<uint8_t const> _data{}; // TODO can't use unique_ptr, because in our tests we store it in a std::function, which requires the object to be copyable
+    std::shared_ptr<uint8_t const> _data{};
     Resolution                     _resolution{};
 };
 
@@ -52,11 +52,11 @@ public:
     {
         assert(PixelFormatT::data_length(_resolution) == data_length);
     }
-    auto copy() const -> UniqueImageData<PixelFormatT> // TODO replace with to_owning ? Which will make a copy if we are not owning the _data pttr, and to a move if we are already owning the _data (eg when converting from nv12 to rgb then passing this copy to the rgb constructor)
+    auto copy() const -> ImageData<PixelFormatT> // TODO replace with to_owning ? Which will make a copy if we are not owning the _data pttr, and to a move if we are already owning the _data (eg when converting from nv12 to rgb then passing this copy to the rgb constructor)
     {
-        auto* data = new uint8_t[PixelFormatT::data_length(_resolution)];
+        auto* data = new uint8_t[PixelFormatT::data_length(_resolution)]; // NOLINT(*owning-memory)
         memcpy(data, _data, PixelFormatT::data_length(_resolution));
-        return UniqueImageData<PixelFormatT>{std::shared_ptr<uint8_t const>{data}, _resolution};
+        return ImageData<PixelFormatT>{std::shared_ptr<uint8_t const>{data}, _resolution};
     }
     auto data() const -> uint8_t const* { return _data; }
     auto resolution() const -> Resolution { return _resolution; }

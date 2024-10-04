@@ -111,7 +111,7 @@ auto Manager::is_plugged_in(DeviceId const& id) const -> bool
 /// Iterates over the map + might modify an element of the map
 void Manager::update()
 {
-    { // TODO do this only every 0.5s, and sleep if we arrive here to fast ?
+    {
         auto infos = grab_all_infos();
 
         std::scoped_lock lock{_infos_mutex};

@@ -7,7 +7,7 @@ class ICaptureImpl {
 public:
     virtual auto image() -> MaybeImage = 0;
 
-    /// Throws a std::runtime_error if the creation of the Capture fails// TODO this isn't true anymore? it is true but only for weird cases, eg NOT if the webcam is unavailable
+    /// Throws a CaptureError if the creation of the Capture fails
     ICaptureImpl()                                           = default;
     virtual ~ICaptureImpl()                                  = default;
     ICaptureImpl(ICaptureImpl const&)                        = delete;
