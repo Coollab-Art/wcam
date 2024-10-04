@@ -6,13 +6,18 @@
 #include "imgui.h"
 #include "wcam/wcam.hpp"
 
-class TexturePool {
+class TexturePool { // NOLINT(*special-member-functions)
 public:
-    TexturePool()
+    ~TexturePool()
     {
-        _ids.resize(20);
-        for (auto& id : _ids)
+        glDeleteTextures(static_cast<GLsizei>(_ids.size()), _ids.data());
+    }
+
+    auto take() -> GLuint
+    {
+        if (_ids.empty())
         {
+            GLuint id{};
             glGenTextures(1, &id);
             glBindTexture(GL_TEXTURE_2D, id);
 
@@ -20,37 +25,24 @@ public:
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+            return id;
         }
-    }
-
-    auto take() -> GLuint
-    {
-        std::scoped_lock lock{_mutex};
-
-        if (_ids.empty())
+        else // NOLINT(*else-after-return)
         {
-            assert(false);
-            return 0;
+            auto const res = _ids.back();
+            _ids.pop_back();
+            return res;
         }
-        auto const res = _ids.back();
-        _ids.pop_back();
-        return res;
     }
 
     void give_back(GLuint id)
     {
-        std::scoped_lock lock{_mutex};
         _ids.push_back(id);
     }
 
-    // ~TexturePool{
-    // TODO
-    // glDeleteTextures(1, &_texture_id);
-    // }
-
 private:
     std::vector<GLuint> _ids{};
-    std::mutex          _mutex{};
 };
 
 auto texture_pool() -> TexturePool&
@@ -59,22 +51,20 @@ auto texture_pool() -> TexturePool&
     return instance;
 }
 
-class Image : public wcam::Image {
+class Image : public wcam::Image { // NOLINT(*special-member-functions)
 public:
-    Image()
-        : _texture_id{texture_pool().take()}
-    {
-    }
-
     ~Image() override
     {
-        texture_pool().give_back(_texture_id);
+        if (_texture_id != 0)
+            texture_pool().give_back(_texture_id);
     }
 
     auto imgui_texture_id() const -> ImTextureID
     {
         if (_gen_texture.has_value())
         {
+            if (_texture_id == 0)
+                _texture_id = texture_pool().take();
             (*_gen_texture)();
             _gen_texture.reset();
         }
@@ -98,7 +88,7 @@ public:
     }
 
 private:
-    GLuint                                       _texture_id{};
+    mutable GLuint                               _texture_id{0};
     mutable std::optional<std::function<void()>> _gen_texture{}; // Since OpenGL calls must happen on the main thread, when set_data is called (from another thread) we just store the thing to do in this function, and call it later, on the main thread
 };
 
@@ -143,38 +133,29 @@ public:
             }
 
             if (ImGui::Button("Open webcam"))
-            {
-                // try // TODO I think this isn't necessary anymore
-                // {
                 capture = wcam::open_webcam(info.id);
-                // }
-                // catch (std::exception const& e)
-                // {
-                //     std::cerr << "Exception occurred: " << e.what() << '\n';
-                //     capture = std::nullopt;
-                //     throw;
-                // }
-            }
             ImGui::PopID();
         }
         if (capture.has_value())
         {
-            auto const                                maybe_image = capture->image();
-            static std::shared_ptr<wcam::Image const> image{};
-            static std::string                        error_msg{};
+            auto const maybe_image = capture->image();
             std::visit(
                 wcam::overloaded{
                     [&](std::shared_ptr<wcam::Image const> const& imag) {
-                        image = imag;
+                        image      = imag;
+                        is_loading = false;
                     },
-                    [](wcam::CaptureError const& error) {
-                        error_msg = wcam::to_string(error);
+                    [&](wcam::CaptureError const& error) {
+                        error_msg  = wcam::to_string(error);
+                        is_loading = false;
                     },
-                    [](wcam::NoNewImageAvailableYet) {
-                        error_msg = "";
+                    [&](wcam::NoNewImageAvailableYet) {
+                        error_msg  = "";
+                        is_loading = false;
                     },
-                    [](wcam::ImageNotInitYet) { // TODO display a "LOADING"
-                        error_msg = "";
+                    [&](wcam::ImageNotInitYet) {
+                        error_msg  = "";
+                        is_loading = true;
                         // Reset the image, otherwise it will show briefly when opening the next webcam (while the new capture hasn't returned any image yet) / when a capture needs to restart because the camera was unplugged and then plugged back
                         image = nullptr;
                     }
@@ -183,6 +164,8 @@ public:
             );
             if (error_msg.empty())
             {
+                if (is_loading)
+                    ImGui::TextUnformatted("LOADING");
                 if (image != nullptr)
                 {
                     auto const& im     = *static_cast<Image const*>(image.get());
@@ -206,13 +189,15 @@ public:
     }
 
 private:
-    quick_imgui::AverageTime          timer{};
-    std::optional<wcam::SharedWebcam> capture;
-    // TODO update the explanation about how we use KeepLibraryAlive
-    wcam::KeepLibraryAlive _keep_wcam_alive{}; // We choose to keep the library running for the whole duration of the program.
-                                               // But in a real application you would probably want to only have the library active if you are actively using or looking to use a camera.
-                                               // For example in OBS you would store one wcam::KeepLibraryAlive{} in each of the webcam Sources, so that the library is only active while a webcam source is in the scene, or when the window to select which webcam to use is open
-                                               // While the library is alive, it has a thread running in the background constantly refreshing its list of infos on which webcam are plugged in, and if webcams are currently beeing used this thread also checks to restart them if they failed (eg if the webcam was already used by another application when we tried to open it)
+    quick_imgui::AverageTime           timer{};
+    std::optional<wcam::SharedWebcam>  capture;
+    std::shared_ptr<wcam::Image const> image{};
+    std::string                        error_msg{};
+    bool                               is_loading{};
+    wcam::KeepLibraryAlive             _keep_wcam_alive{}; // We choose to keep the library running for the whole duration of the program.
+                                                           // But in a real application you would probably want to only have the library active if you are actively using or looking to use a camera.
+                                                           // For example in OBS you would store one wcam::KeepLibraryAlive{} in each of the webcam Sources, so that the library is only active while a webcam source is in the scene, or when the window to select which webcam to use is open
+                                                           // While the library is alive, it has a thread running in the background constantly refreshing its list of infos on which webcam are plugged in, and if webcams are currently beeing used this thread also checks to restart them if they failed (eg if the webcam was already used by another application when we tried to open it)
 };
 
 auto main() -> int
