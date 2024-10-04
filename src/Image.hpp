@@ -2,8 +2,11 @@
 #include <cassert>
 #include <cstdint>
 #include <memory>
+#include <utility>
+#include <variant>
 #include "FirstRowIs.hpp"
 #include "Resolution.hpp"
+#include "overloaded.hpp"
 
 namespace wcam {
 
@@ -46,24 +49,50 @@ private:
 template<typename PixelFormatT>
 class ImageDataView {
 public:
-    ImageDataView(uint8_t const* data, size_t data_length, Resolution resolution)
-        : _data{data}
+    ImageDataView(std::variant<uint8_t const*, std::shared_ptr<uint8_t const>> data, size_t data_length, Resolution resolution)
+        : _data{std::move(data)}
         , _resolution{resolution}
     {
         assert(PixelFormatT::data_length(_resolution) == data_length);
     }
-    auto copy() const -> ImageData<PixelFormatT> // TODO replace with to_owning ? Which will make a copy if we are not owning the _data pttr, and to a move if we are already owning the _data (eg when converting from nv12 to rgb then passing this copy to the rgb constructor)
+
+    auto to_owning() const -> ImageData<PixelFormatT>
     {
-        auto* data = new uint8_t[PixelFormatT::data_length(_resolution)]; // NOLINT(*owning-memory)
-        memcpy(data, _data, PixelFormatT::data_length(_resolution));
-        return ImageData<PixelFormatT>{std::shared_ptr<uint8_t const>{data}, _resolution};
+        return std::visit(
+            overloaded{
+                [&](uint8_t const* data) {
+                    auto* res = new uint8_t[PixelFormatT::data_length(_resolution)]; // NOLINT(*owning-memory)
+                    memcpy(res, data, PixelFormatT::data_length(_resolution));
+                    return ImageData<PixelFormatT>{std::shared_ptr<uint8_t const>{res}, _resolution};
+                },
+                [&](std::shared_ptr<uint8_t const> const& data) {
+                    return ImageData<PixelFormatT>{data, _resolution};
+                },
+            },
+            _data
+        );
     }
-    auto data() const -> uint8_t const* { return _data; }
+
+    auto data() const -> uint8_t const*
+    {
+        return std::visit(
+            overloaded{
+                [](uint8_t const* data) {
+                    return data;
+                },
+                [](std::shared_ptr<uint8_t const> const& data) {
+                    return data.get();
+                },
+            },
+            _data
+        );
+    }
+
     auto resolution() const -> Resolution { return _resolution; }
 
 private:
-    uint8_t const* _data{};
-    Resolution     _resolution{};
+    std::variant<uint8_t const*, std::shared_ptr<uint8_t const>> _data{};
+    Resolution                                                   _resolution{};
 };
 
 class Image {
@@ -80,9 +109,9 @@ public:
     auto height() const -> Resolution::DataType { return _resolution.height(); }
     auto row_order() const -> wcam::FirstRowIs { return _row_order; }
 
-    virtual void set_data(ImageDataView<RGB24>) = 0;
-    virtual void set_data(ImageDataView<BGR24>);
-    virtual void set_data(ImageDataView<NV12>);
+    virtual void set_data(ImageDataView<RGB24> const&) = 0;
+    virtual void set_data(ImageDataView<BGR24> const&);
+    virtual void set_data(ImageDataView<NV12> const&);
 
     void set_resolution(Resolution resolution) { _resolution = resolution; }
     void set_row_order(wcam::FirstRowIs row_order) { _row_order = row_order; }

@@ -8,7 +8,7 @@ static int clamp(int value)
     return value < 0 ? 0 : (value > 255 ? 255 : value);
 }
 
-static auto BGR24ToRGB24(uint8_t const* bgrData, Resolution resolution) -> std::unique_ptr<uint8_t const>
+static auto BGR24ToRGB24(uint8_t const* bgrData, Resolution resolution) -> std::shared_ptr<uint8_t const>
 {
     auto*      rgbData = new uint8_t[resolution.pixels_count() * 3];
     auto const width   = resolution.width();
@@ -24,10 +24,10 @@ static auto BGR24ToRGB24(uint8_t const* bgrData, Resolution resolution) -> std::
         }
     }
 
-    return std::unique_ptr<uint8_t const>(rgbData);
+    return std::shared_ptr<uint8_t const>{rgbData};
 }
 
-static auto NV12ToRGB24(uint8_t const* nv12Data, Resolution resolution) -> std::unique_ptr<uint8_t const>
+static auto NV12ToRGB24(uint8_t const* nv12Data, Resolution resolution) -> std::shared_ptr<uint8_t const>
 {
     auto*                rgbData   = new uint8_t[resolution.pixels_count() * 3];
     Resolution::DataType frameSize = resolution.pixels_count();
@@ -62,19 +62,25 @@ static auto NV12ToRGB24(uint8_t const* nv12Data, Resolution resolution) -> std::
         }
     }
 
-    return std::unique_ptr<uint8_t const>(rgbData);
+    return std::shared_ptr<uint8_t const>{rgbData};
 }
 
-void Image::set_data(ImageDataView<BGR24> bgrData)
+void Image::set_data(ImageDataView<BGR24> const& bgrData)
 {
-    std::unique_ptr<uint8_t const> const rgb24_data = BGR24ToRGB24(bgrData.data(), bgrData.resolution());
-    set_data(ImageDataView<RGB24>{rgb24_data.get(), RGB24::data_length(bgrData.resolution()), bgrData.resolution()});
+    set_data(ImageDataView<RGB24>{
+        BGR24ToRGB24(bgrData.data(), bgrData.resolution()),
+        RGB24::data_length(bgrData.resolution()),
+        bgrData.resolution()
+    });
 }
 
-void Image::set_data(ImageDataView<NV12> nv12_data)
+void Image::set_data(ImageDataView<NV12> const& nv12_data)
 {
-    std::unique_ptr<uint8_t const> const rgb24_data = NV12ToRGB24(nv12_data.data(), nv12_data.resolution());
-    set_data(ImageDataView<RGB24>{rgb24_data.get(), RGB24::data_length(nv12_data.resolution()), nv12_data.resolution()});
+    set_data(ImageDataView<RGB24>{
+        NV12ToRGB24(nv12_data.data(), nv12_data.resolution()),
+        RGB24::data_length(nv12_data.resolution()),
+        nv12_data.resolution()
+    });
 }
 
 } // namespace wcam

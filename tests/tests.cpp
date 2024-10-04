@@ -6,7 +6,7 @@
 #include "imgui.h"
 #include "wcam/wcam.hpp"
 
-class TexturePool { // TODO not needed, Image can create their own texture (deferred, on the main thread)
+class TexturePool {
 public:
     TexturePool()
     {
@@ -81,17 +81,17 @@ public:
         return static_cast<ImTextureID>(reinterpret_cast<void*>(static_cast<uint64_t>(_texture_id))); // NOLINT(performance-no-int-to-ptr, *reinterpret-cast)
     }
 
-    void set_data(wcam::ImageDataView<wcam::RGB24> rgb_data) override
+    void set_data(wcam::ImageDataView<wcam::RGB24> const& rgb_data) override
     {
-        _gen_texture = [owned_rgb_data = rgb_data.copy(), this]() {
+        _gen_texture = [owned_rgb_data = rgb_data.to_owning(), this]() {
             glBindTexture(GL_TEXTURE_2D, _texture_id);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, static_cast<GLsizei>(owned_rgb_data.resolution().width()), static_cast<GLsizei>(owned_rgb_data.resolution().height()), 0, GL_RGB, GL_UNSIGNED_BYTE, owned_rgb_data.data());
         };
     }
 
-    void set_data(wcam::ImageDataView<wcam::BGR24> bgr_data) override
+    void set_data(wcam::ImageDataView<wcam::BGR24> const& bgr_data) override
     {
-        _gen_texture = [owned_bgr_data = bgr_data.copy(), this]() {
+        _gen_texture = [owned_bgr_data = bgr_data.to_owning(), this]() {
             glBindTexture(GL_TEXTURE_2D, _texture_id);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, static_cast<GLsizei>(owned_bgr_data.resolution().width()), static_cast<GLsizei>(owned_bgr_data.resolution().height()), 0, GL_BGR, GL_UNSIGNED_BYTE, owned_bgr_data.data());
         };
