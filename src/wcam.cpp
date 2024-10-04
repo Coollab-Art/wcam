@@ -24,4 +24,9 @@ void set_selected_resolution(DeviceId const& id, Resolution resolution)
     internal::resolutions_manager().set_selected_resolution(id, resolution);
 }
 
+auto get_resolutions_map() -> ResolutionsMap&
+{
+    return internal::resolutions_manager().get_map();
+}
+
 } // namespace wcam

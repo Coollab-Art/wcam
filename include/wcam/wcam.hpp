@@ -7,6 +7,7 @@
 #include "../../src/KeepLibraryAlive.hpp"
 #include "../../src/MaybeImage.hpp"
 #include "../../src/Resolution.hpp"
+#include "../../src/ResolutionsMap.hpp"
 #include "../../src/SharedWebcam.hpp"
 #include "../../src/internal/ImageFactory.hpp"
 #include "../../src/overloaded.hpp"
@@ -28,5 +29,7 @@ void set_image_type()
     assert(!internal::image_factory_pointer() && "You already called set_image_type. You must only call it once."); // NB: actually this isn't a problem to call it several times, but is it really what you want? If yes, then you can comment out this assert and everything will work O:)
     internal::image_factory_pointer() = std::make_unique<internal::ImageFactory<ImageT>>();
 }
+
+auto get_resolutions_map() -> ResolutionsMap&;
 
 } // namespace wcam

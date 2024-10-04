@@ -47,5 +47,6 @@ private:
 };
 
 auto manager() -> std::shared_ptr<Manager>;
+auto manager_unchecked() -> std::shared_ptr<Manager>;
 
 } // namespace wcam::internal

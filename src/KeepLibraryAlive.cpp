@@ -29,9 +29,13 @@ KeepLibraryAlive::KeepLibraryAlive()
 }
 
 namespace internal {
+auto manager_unchecked() -> std::shared_ptr<Manager>
+{
+    return manager_weak_ptr().lock();
+}
 auto manager() -> std::shared_ptr<Manager>
 {
-    auto const manager = manager_weak_ptr().lock();
+    auto const manager = manager_unchecked();
     if (!manager)
     {
         assert(false && "You need to have an instance of wcam::KeepLibraryAlive alive in order to call any function from wcam. See the documentation of wcam::KeepLibraryAlive for more info.");

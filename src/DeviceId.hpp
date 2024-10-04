@@ -14,6 +14,7 @@ public:
     DeviceId() = default;
 
     auto        as_string() const -> std::string const& { return _device_path; }
+    static auto from_string(std::string const& device_path) -> DeviceId { return DeviceId{device_path}; }
     friend auto operator==(DeviceId const&, DeviceId const&) -> bool = default;
 
 private:
