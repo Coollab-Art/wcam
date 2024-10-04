@@ -3,13 +3,12 @@
 #include <cstdlib>
 #include <format>
 #include <source_location>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include "../Info.hpp"
 #include "ImageFactory.hpp"
 #include "make_device_id.hpp"
-#include "wcam/wcam.hpp"
 
 /// NB: we use DirectShow and not MediaFoundation
 /// because OBS Virtual Camera only works with DirectShow

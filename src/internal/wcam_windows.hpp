@@ -1,9 +1,9 @@
 #pragma once
-#include "ICaptureImpl.hpp"
 #if defined(_WIN32)
 #include <mutex>
+#include "../DeviceId.hpp"
+#include "ICaptureImpl.hpp"
 #include "qedit.h"
-#include "wcam/wcam.hpp"
 
 namespace wcam::internal {
 
@@ -13,11 +13,15 @@ class CaptureImpl : public ISampleGrabberCB
 public:
     CaptureImpl(DeviceId const& id, Resolution const& resolution);
     ~CaptureImpl() override;
+    CaptureImpl(CaptureImpl const&)                        = delete;
+    auto operator=(CaptureImpl const&) -> CaptureImpl&     = delete;
+    CaptureImpl(CaptureImpl&&) noexcept                    = delete;
+    auto operator=(CaptureImpl&&) noexcept -> CaptureImpl& = delete;
 
-    STDMETHODIMP_(ULONG)
-    AddRef() override;
-    STDMETHODIMP_(ULONG)
-    Release() override;
+    // clang-format off
+    STDMETHODIMP_(ULONG) AddRef() override;
+    STDMETHODIMP_(ULONG) Release() override;
+    // clang-format on
     STDMETHODIMP QueryInterface(REFIID riid, void** ppv) override;
     STDMETHODIMP SampleCB(double /* Time */, IMediaSample* /* pSample */) override { return E_NOTIMPL; }
 
@@ -44,7 +48,7 @@ public:
     //     return S_OK;
     // }
 
-    STDMETHODIMP BufferCB(double /* Time */, BYTE* pBuffer, long BufferLen) override;
+    STDMETHODIMP BufferCB(double /* Time */, BYTE* pBuffer, long BufferLen) override; // NOLINT(*runtime-int)
 
     auto image() -> MaybeImage override;
 
@@ -55,8 +59,7 @@ private:
     std::mutex _mutex{};
 
     IMediaControl* _media_control{};
-
-    ULONG _ref_count{0};
+    ULONG          _ref_count{0};
 };
 
 } // namespace wcam::internal
