@@ -18,39 +18,15 @@ public:
     CaptureImpl(CaptureImpl&&) noexcept                    = delete;
     auto operator=(CaptureImpl&&) noexcept -> CaptureImpl& = delete;
 
+    auto image() -> MaybeImage override;
+
     // clang-format off
     STDMETHODIMP_(ULONG) AddRef() override;
     STDMETHODIMP_(ULONG) Release() override;
     // clang-format on
     STDMETHODIMP QueryInterface(REFIID riid, void** ppv) override;
     STDMETHODIMP SampleCB(double /* Time */, IMediaSample* /* pSample */) override { return E_NOTIMPL; }
-
-    // TODO apparently SampleCB has less overhead than BufferCB
-    //     STDMETHODIMP SampleCB(double , IMediaSample *pSample){
-    //     if(WaitForSingleObject(hEvent, 0) == WAIT_OBJECT_0) return S_OK;
-
-    //     HRESULT hr = pSample->GetPointer(&ptrBuffer);
-
-    //     if(hr == S_OK){
-    //         latestBufferLength = pSample->GetActualDataLength();
-    //           if(latestBufferLength == numBytes){
-    //             EnterCriticalSection(&critSection);
-    //                   memcpy(pixels, ptrBuffer, latestBufferLength);
-    //                 newFrame    = true;
-    //                 freezeCheck = 1;
-    //             LeaveCriticalSection(&critSection);
-    //             SetEvent(hEvent);
-    //         }else{
-    //             DebugPrintOut("ERROR: SampleCB() - buffer sizes do not match\n");
-    //         }
-    //     }
-
-    //     return S_OK;
-    // }
-
     STDMETHODIMP BufferCB(double /* Time */, BYTE* pBuffer, long BufferLen) override; // NOLINT(*runtime-int)
-
-    auto image() -> MaybeImage override;
 
 private:
     MaybeImage _image{ImageNotInitYet{}};

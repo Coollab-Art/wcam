@@ -34,7 +34,7 @@ auto convert_wstr_to_str(BSTR const& wstr) -> std::string
     return res;
 }
 
-static auto hr2err(HRESULT hr) -> std::string
+static auto hr_to_string(HRESULT hr) -> std::string
 {
     char* error_message{nullptr};
     FormatMessage(
@@ -53,7 +53,7 @@ static auto hr2err(HRESULT hr) -> std::string
 
 static void throw_error(HRESULT hr, std::string_view code_that_failed, std::source_location location = std::source_location::current())
 {
-    throw CaptureException{Error_Unknown{std::format("{}(During `{}`, at {}({}:{}))", hr2err(hr), code_that_failed, location.file_name(), location.line(), location.column())}};
+    throw CaptureException{Error_Unknown{std::format("{}(During `{}`, at {}({}:{}))", hr_to_string(hr), code_that_failed, location.file_name(), location.line(), location.column())}};
 }
 
 #define THROW_IF_ERR(exp) /*NOLINT(*macro*)*/ \
@@ -436,7 +436,7 @@ STDMETHODIMP CaptureImpl::BufferCB(double /* Time */, BYTE* pBuffer, long Buffer
         std::unique_lock lock{_mutex};
         _image = image;
     }
-    return 0;
+    return S_OK;
 }
 
 auto CaptureImpl::image() -> MaybeImage
