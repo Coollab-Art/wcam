@@ -54,6 +54,7 @@ public:
         , _resolution{resolution}
     {
         assert(PixelFormatT::data_length(_resolution) == data_length);
+        std::ignore = data_length; // Disable warning in release
     }
 
     auto to_owning() const -> ImageData<PixelFormatT>

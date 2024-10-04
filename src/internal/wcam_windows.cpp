@@ -365,20 +365,11 @@ CaptureImpl::CaptureImpl(DeviceId const& device_id, Resolution const& requested_
     THROW_IF_ERR(pGraph->AddFilter(pSampleGrabberFilter, L"Sample Grabber"));
     // 6. Retrieve the Video Information Header
 
-    // TODO check if this does anything //EXP - lets try setting the sync source to null - and make it run as fast as possible
-    // {
-    //     IMediaFilter* pMediaFilter = 0;
-    //     hr                         = VD->pGraph->QueryInterface(IID_IMediaFilter, (void**)&pMediaFilter);
-    //     if (FAILED(hr))
-    //     {
-    //         DebugPrintOut("ERROR: Could not get IID_IMediaFilter interface\n");
-    //     }
-    //     else
-    //     {
-    //         pMediaFilter->SetSyncSource(NULL);
-    //         pMediaFilter->Release();
-    //     }
-    // }
+    { // Tell the graph to process the samples as fast as possible, instead of trying to sync to a clock (cf. https://learn.microsoft.com/en-us/windows/win32/api/strmif/nf-strmif-imediafilter-setsyncsource)
+        auto media_filter = AutoRelease<IMediaFilter>{};
+        THROW_IF_ERR(pGraph->QueryInterface(IID_IMediaFilter, reinterpret_cast<void**>(&media_filter))); // NOLINT(*reinterpret-cast)
+        media_filter->SetSyncSource(nullptr);
+    }
     // 5. Render the Stream
     AutoRelease<IBaseFilter> pNullRenderer{CLSID_NullRenderer};
     THROW_IF_ERR(pGraph->AddFilter(pNullRenderer, L"Null Renderer"));

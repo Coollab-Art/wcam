@@ -1,6 +1,3 @@
-#include <exception>
-#include <iostream>
-#include <mutex>
 #include <quick_imgui/quick_imgui.hpp>
 #include "glad/glad.h"
 #include "imgui.h"
@@ -198,7 +195,6 @@ auto main() -> int
     quick_imgui::loop("webcam_info tests", [&]() {
         if (is_first_frame)
         {
-            texture_pool(); // Init the texture pool, on the main thread to make sure all the textures can be successfully created
             is_first_frame = false;
         }
 
