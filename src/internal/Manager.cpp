@@ -141,9 +141,9 @@ void Manager::update()
             {
                 request->maybe_capture() = Capture{request->id(), resolutions_manager().selected_resolution(request->id())};
             }
-            catch (CaptureError const& err)
+            catch (CaptureException const& e)
             {
-                request->maybe_capture() = err;
+                request->maybe_capture() = e.capture_error;
             }
         }
     }

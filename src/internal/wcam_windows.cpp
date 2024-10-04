@@ -1,5 +1,5 @@
-#include "ImageFactory.hpp"
 #if defined(_WIN32)
+#include "wcam_windows.hpp"
 #include <cstdlib>
 #include <format>
 #include <source_location>
@@ -7,9 +7,9 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include "ImageFactory.hpp"
 #include "make_device_id.hpp"
 #include "wcam/wcam.hpp"
-#include "wcam_windows.hpp"
 
 /// NB: we use DirectShow and not MediaFoundation
 /// because OBS Virtual Camera only works with DirectShow
@@ -54,7 +54,7 @@ static auto hr2err(HRESULT hr) -> std::string
 
 static void throw_error(HRESULT hr, std::string_view code_that_failed, std::source_location location = std::source_location::current())
 {
-    throw CaptureError{Error_Unknown{std::format("{}(During `{}`, at {}({}:{}))", hr2err(hr), code_that_failed, location.file_name(), location.line(), location.column())}};
+    throw CaptureException{Error_Unknown{std::format("{}(During `{}`, at {}({}:{}))", hr2err(hr), code_that_failed, location.file_name(), location.line(), location.column())}};
 }
 
 #define THROW_IF_ERR(exp) /*NOLINT(*macro*)*/ \
@@ -403,7 +403,7 @@ CaptureImpl::CaptureImpl(DeviceId const& device_id, Resolution const& requested_
             _media_event->FreeEventParams(evCode, param1, param2);
         }
         if (disconnected)
-            throw CaptureError{Error_WebcamAlreadyUsedInAnotherApplication{}};
+            throw CaptureException{Error_WebcamAlreadyUsedInAnotherApplication{}};
     }
 
     AM_MEDIA_TYPE mtGrabbed;

@@ -99,16 +99,6 @@ public:
         timer.imgui_plot();
         timer.start();
 
-        try
-        {
-            auto const webcam_infos = wcam::all_webcams_info();
-        }
-        catch (std::exception const& e)
-        {
-            std::cerr << "Exception occurred: " << e.what() << '\n';
-            // capture = nullptr;
-            throw;
-        }
         auto const webcam_infos = wcam::all_webcams_info();
         int        imgui_id{0};
         for (auto const& info : webcam_infos)
