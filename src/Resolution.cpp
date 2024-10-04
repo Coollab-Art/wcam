@@ -22,7 +22,7 @@ static auto as_fraction(float x) -> Fraction
     std::valarray<int> previous_fraction{1, 0};
 
     int         max_iterations = 10;
-    float const precision      = 1e-6;
+    float const precision      = 1e-6f;
     while (max_iterations > 0
            && decimal_part > precision)
     {

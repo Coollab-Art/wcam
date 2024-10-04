@@ -425,7 +425,7 @@ CaptureImpl::CaptureImpl(DeviceId const& device_id, Resolution const& requested_
 
 STDMETHODIMP CaptureImpl::BufferCB(double /* Time */, BYTE* pBuffer, long BufferLen)
 {
-    auto image = image_factory().make_image(); // TODO get the image from the pool of available images, to avoid recreating an image all the time (eg creating an opengl texture each time, or allocating a buffer)
+    auto image = image_factory().make_image();
     image->set_resolution(_resolution);
     if (_video_format == MEDIASUBTYPE_RGB24)
     {
@@ -452,14 +452,7 @@ STDMETHODIMP CaptureImpl::BufferCB(double /* Time */, BYTE* pBuffer, long Buffer
 auto CaptureImpl::image() -> MaybeImage
 {
     std::lock_guard lock{_mutex};
-
-    // auto res = std::move(_image);
-    // if (std::holds_alternative<Image>(res))
-    //     _image = NoNewImageAvailableYet{}; // Make sure we know that the current image has been consumed
-
-    // TODO indicate if the image has already been received ? or let users handle it ? by checking the address in the shared ptr
-
-    return _image; // We don't use std::move here because it would prevent copy elision
+    return _image;
 }
 
 CaptureImpl::~CaptureImpl()
