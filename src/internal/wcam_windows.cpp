@@ -300,6 +300,24 @@ static void throw_if_webcam_is_already_in_use(IGraphBuilder* graph)
     }
 }
 
+static auto get_actual_resolution(ISampleGrabber* sample_grabber, GUID video_format) -> Resolution
+{
+    auto media_type = AM_MEDIA_TYPE{};
+    THROW_IF_ERR(sample_grabber->GetConnectedMediaType(&media_type));
+
+    auto* const video_info = reinterpret_cast<VIDEOINFOHEADER*>(media_type.pbFormat); // NOLINT(*reinterpret-cast)
+    auto const  resolution = Resolution{
+        static_cast<Resolution::DataType>(video_info->bmiHeader.biWidth),
+        static_cast<Resolution::DataType>(video_info->bmiHeader.biHeight),
+    };
+
+    assert(
+        (video_format == MEDIASUBTYPE_RGB24 && video_info->bmiHeader.biSizeImage == resolution.pixels_count() * 3)
+        || (video_format == MEDIASUBTYPE_NV12 && video_info->bmiHeader.biSizeImage == resolution.pixels_count() * 3 / 2)
+    );
+    return resolution;
+}
+
 CaptureImpl::CaptureImpl(DeviceId const& device_id, Resolution const& requested_resolution)
     : _video_format{select_video_format(device_id)}
 {
@@ -338,19 +356,7 @@ CaptureImpl::CaptureImpl(DeviceId const& device_id, Resolution const& requested_
     THROW_IF_ERR(_media_control->Run());
     throw_if_webcam_is_already_in_use(graph); // Must be done after the graph is started
 
-    AM_MEDIA_TYPE mtGrabbed;
-    THROW_IF_ERR(sample_grabber->GetConnectedMediaType(&mtGrabbed));
-
-    VIDEOINFOHEADER* pVih = (VIDEOINFOHEADER*)mtGrabbed.pbFormat;
-    _resolution           = Resolution{
-        static_cast<Resolution::DataType>(pVih->bmiHeader.biWidth),
-        static_cast<Resolution::DataType>(pVih->bmiHeader.biHeight),
-    };
-
-    assert(
-        (_video_format == MEDIASUBTYPE_RGB24 && pVih->bmiHeader.biSizeImage == _resolution.pixels_count() * 3)
-        || (_video_format == MEDIASUBTYPE_NV12 && pVih->bmiHeader.biSizeImage == _resolution.pixels_count() * 3 / 2)
-    );
+    _resolution = get_actual_resolution(sample_grabber, _video_format);
 }
 
 STDMETHODIMP CaptureImpl::BufferCB(double /* Time */, BYTE* pBuffer, long BufferLen)
