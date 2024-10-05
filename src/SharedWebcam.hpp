@@ -1,4 +1,5 @@
 #pragma once
+#include "DeviceId.hpp"
 #include "MaybeImage.hpp"
 
 namespace wcam {
@@ -13,6 +14,7 @@ class SharedWebcam {
 public:
     /// Returns a new image that has just been captured, or an info telling you what to do (see the definition of MaybeImage for more details)
     [[nodiscard]] auto image() const -> MaybeImage;
+    [[nodiscard]] auto id() const -> DeviceId;
 
 private:
     friend class internal::Manager;
