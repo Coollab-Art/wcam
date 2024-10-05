@@ -18,7 +18,7 @@
 
 namespace wcam::internal {
 
-auto convert_wstr_to_str(BSTR const& wstr) -> std::string
+static auto convert_wstr_to_str(BSTR const& wstr) -> std::string
 {
     int const wstr_len = static_cast<int>(SysStringLen(wstr));
     int const res_len  = WideCharToMultiByte(CP_UTF8, 0, wstr, wstr_len, nullptr, 0, nullptr, nullptr);
@@ -64,11 +64,23 @@ static void throw_error(HRESULT hr, std::string_view code_that_failed, std::sour
         if (FAILED(hresult))                             \
             throw_error(hresult, #exp, location);        \
     }
+#define ASSERT_AND_RETURN_IF_ERR(exp, default_value) /*NOLINT(*macro*)*/ \
+    {                                                                    \
+        HRESULT hresult = exp;                                           \
+        if (FAILED(hresult))                                             \
+        {                                                                \
+            assert(false);                                               \
+            return default_value;                                        \
+        }                                                                \
+    }
 
 template<typename T>
 class AutoRelease {
 public:
     AutoRelease() = default;
+    explicit AutoRelease(T* ptr)
+        : _ptr{ptr}
+    {}
     explicit AutoRelease(REFCLSID class_id, std::source_location location = std::source_location::current())
     {
         THROW_IF_ERR2(CoCreateInstance(class_id, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&_ptr)), location);
@@ -99,14 +111,32 @@ private:
     T* _ptr{nullptr};
 };
 
-static void CoInitializeIFN()
-{
-    struct Raii { // NOLINT(*special-member-functions)
-        Raii() { THROW_IF_ERR(CoInitializeEx(nullptr, COINIT_MULTITHREADED)); }
-        ~Raii() { CoUninitialize(); }
-    };
-    thread_local Raii instance{}; // Each thread needs to call CoInitializeEx once
-}
+class VariantRAII {
+public:
+    VariantRAII()
+    {
+        VariantInit(&_variant);
+    }
+    ~VariantRAII()
+    {
+        assert(VariantClear(&_variant) == S_OK);
+    }
+    VariantRAII(VariantRAII const&)                = delete;
+    VariantRAII& operator=(VariantRAII const&)     = delete;
+    VariantRAII(VariantRAII&&) noexcept            = delete;
+    VariantRAII& operator=(VariantRAII&&) noexcept = delete;
+
+    auto operator->() -> VARIANT* { return &_variant; }
+    auto operator->() const -> VARIANT const* { return &_variant; }
+    operator VARIANT() { return _variant; } // NOLINT(*explicit*)
+    VARIANT* operator&()                    // NOLINT(*runtime-operator)
+    {
+        return &_variant;
+    }
+
+private:
+    VARIANT _variant{};
+};
 
 // clang-format off
 STDMETHODIMP_(ULONG) CaptureImpl::AddRef() { return InterlockedIncrement(&_ref_count); }
@@ -123,179 +153,87 @@ STDMETHODIMP CaptureImpl::QueryInterface(REFIID riid, void** ppv)
     return E_NOINTERFACE;
 }
 
-auto find_webcam_name(IMoniker* pMoniker) -> std::string
+static void CoInitializeIFN()
 {
-    auto pPropBag = AutoRelease<IPropertyBag>{};
-    THROW_IF_ERR(pMoniker->BindToStorage(nullptr, nullptr, IID_PPV_ARGS(&pPropBag))); // TODO should we continue the loop if there is an error here ?
+    struct Raii { // NOLINT(*special-member-functions)
+        Raii() { THROW_IF_ERR(CoInitializeEx(nullptr, COINIT_MULTITHREADED)); }
+        ~Raii() { CoUninitialize(); }
+    };
+    thread_local Raii instance{}; // Each thread needs to call CoInitializeEx once
+}
 
-    VARIANT webcam_name_wstr;
-    VariantInit(&webcam_name_wstr);
-    HRESULT hr = pPropBag->Read(L"FriendlyName", &webcam_name_wstr, nullptr); // TODO what happens if friendly name is missing ?
-    // if (hr == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND))
-    // {
-    //     hr = pPropBag->Read(L"DevicePath", &webcam_name_wstr, nullptr);
-    // }
+static auto get_webcam_name(IMoniker* moniker) -> std::string
+{
+    auto prop_bag = AutoRelease<IPropertyBag>{};
+    ASSERT_AND_RETURN_IF_ERR(moniker->BindToStorage(nullptr, nullptr, IID_PPV_ARGS(&prop_bag)), "Unnamed webcam");
+
+    auto          webcam_name_wstr = VariantRAII{};
+    HRESULT const hr               = prop_bag->Read(L"FriendlyName", &webcam_name_wstr, nullptr);
     if (hr == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND))
-    {
         return "Unnamed webcam";
-    }
-    auto res = convert_wstr_to_str(webcam_name_wstr.bstrVal);
-    THROW_IF_ERR(VariantClear(&webcam_name_wstr)); // TODO should we throw here ? // TODO must clear before the early return above
-    return res;
+    return convert_wstr_to_str(webcam_name_wstr->bstrVal);
 }
 
-auto find_webcam_id(IMoniker* pMoniker) -> DeviceId
+static auto get_webcam_id(IMoniker* moniker) -> DeviceId
 {
-    auto pPropBag = AutoRelease<IPropertyBag>{};
-    THROW_IF_ERR(pMoniker->BindToStorage(nullptr, nullptr, IID_PPV_ARGS(&pPropBag)));
+    auto prop_bag = AutoRelease<IPropertyBag>{};
+    ASSERT_AND_RETURN_IF_ERR(moniker->BindToStorage(nullptr, nullptr, IID_PPV_ARGS(&prop_bag)), make_device_id(get_webcam_name(moniker)));
 
-    VARIANT webcam_name_wstr;
-    VariantInit(&webcam_name_wstr);
-    HRESULT hr = pPropBag->Read(L"DevicePath", &webcam_name_wstr, nullptr);
+    auto          device_path = VariantRAII{};
+    HRESULT const hr          = prop_bag->Read(L"DevicePath", &device_path, nullptr);
     if (hr == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND)) // It can happen, for example OBS Virtual Camera doesn't have a DevicePath
-    {
-        return make_device_id(find_webcam_name(pMoniker));
-    }
-    auto res = convert_wstr_to_str(webcam_name_wstr.bstrVal);
-    THROW_IF_ERR(VariantClear(&webcam_name_wstr)); // TODO should we throw here ?
-    return make_device_id(res);
+        return make_device_id(get_webcam_name(moniker));
+    return make_device_id(convert_wstr_to_str(device_path->bstrVal));
 }
 
-// Release the format block for a media type.
-
-// Delete a media type structure that was allocated on the heap.
-void DeleteMediaType(AM_MEDIA_TYPE* pmt)
+static void delete_media_type(AM_MEDIA_TYPE* pmt)
 {
-    if (pmt != NULL)
+    if (pmt == nullptr)
+        return;
+
+    if (pmt->cbFormat != 0)
     {
-        if (pmt->cbFormat != 0)
-        {
-            CoTaskMemFree((PVOID)pmt->pbFormat);
-            pmt->cbFormat = 0;
-            pmt->pbFormat = NULL;
-        }
-        if (pmt->pUnk != NULL)
-        {
-            // pUnk should not be used.
-            pmt->pUnk->Release();
-            pmt->pUnk = NULL;
-        }
-        CoTaskMemFree(pmt);
+        CoTaskMemFree((PVOID)pmt->pbFormat); // NOLINT(*readability-casting)
+        pmt->cbFormat = 0;
+        pmt->pbFormat = nullptr;
     }
+    if (pmt->pUnk != nullptr)
+    {
+        pmt->pUnk->Release();
+        pmt->pUnk = nullptr;
+    }
+    CoTaskMemFree(pmt);
 }
 
-// HRESULT videoInput::ShowFilterPropertyPages(IBaseFilter* pFilter)
-// {
-//     ISpecifyPropertyPages* pProp;
+static auto find_moniker(DeviceId const& device_id) -> IMoniker*
+{
+    auto dev_enum   = AutoRelease<ICreateDevEnum>{CLSID_SystemDeviceEnum};
+    auto enumerator = AutoRelease<IEnumMoniker>{};
+    THROW_IF_ERR(dev_enum->CreateClassEnumerator(CLSID_VideoInputDeviceCategory, &enumerator, 0));
 
-//     HRESULT hr = pFilter->QueryInterface(IID_ISpecifyPropertyPages, (void**)&pProp);
-//     if (SUCCEEDED(hr))
-//     {
-//         // Get the filter's name and IUnknown pointer.
-//         FILTER_INFO FilterInfo;
-//         hr = pFilter->QueryFilterInfo(&FilterInfo);
-//         IUnknown* pFilterUnk;
-//         pFilter->QueryInterface(IID_IUnknown, (void**)&pFilterUnk);
-
-//         // Show the page.
-//         CAUUID caGUID;
-//         pProp->GetPages(&caGUID);
-//         pProp->Release();
-//         OleCreatePropertyFrame(
-//             NULL,               // Parent window
-//             0, 0,               // Reserved
-//             FilterInfo.achName, // Caption for the dialog box
-//             1,                  // Number of objects (just the filter)
-//             &pFilterUnk,        // Array of object pointers.
-//             caGUID.cElems,      // Number of property pages
-//             caGUID.pElems,      // Array of property page CLSIDs
-//             0,                  // Locale identifier
-//             0, NULL             // Reserved
-//         );
-
-//         // Clean up.
-//         if (pFilterUnk)
-//             pFilterUnk->Release();
-//         if (FilterInfo.pGraph)
-//             FilterInfo.pGraph->Release();
-//         CoTaskMemFree(caGUID.pElems);
-//     }
-//     return hr;
-// }
-
-// auto CreateEventCodeMap(long evCode) -> std::string
-// {
-//     std::map<long, std::string> evCodeMap;
-
-//     evCodeMap[EC_COMPLETE]                  = "EC_COMPLETE";
-//     evCodeMap[EC_USERABORT]                 = "EC_USERABORT";
-//     evCodeMap[EC_ERRORABORT]                = "EC_ERRORABORT";
-//     evCodeMap[EC_TIME]                      = "EC_TIME";
-//     evCodeMap[EC_REPAINT]                   = "EC_REPAINT";
-//     evCodeMap[EC_STREAM_ERROR_STOPPED]      = "EC_STREAM_ERROR_STOPPED";
-//     evCodeMap[EC_STREAM_ERROR_STILLPLAYING] = "EC_STREAM_ERROR_STILLPLAYING";
-//     evCodeMap[EC_ERROR_STILLPLAYING]        = "EC_ERROR_STILLPLAYING";
-//     evCodeMap[EC_PALETTE_CHANGED]           = "EC_PALETTE_CHANGED";
-//     evCodeMap[EC_VIDEO_SIZE_CHANGED]        = "EC_VIDEO_SIZE_CHANGED";
-//     evCodeMap[EC_QUALITY_CHANGE]            = "EC_QUALITY_CHANGE";
-//     evCodeMap[EC_SHUTTING_DOWN]             = "EC_SHUTTING_DOWN";
-//     evCodeMap[EC_CLOCK_CHANGED]             = "EC_CLOCK_CHANGED";
-//     evCodeMap[EC_PAUSED]                    = "EC_PAUSED";
-//     evCodeMap[EC_OPENING_FILE]              = "EC_OPENING_FILE";
-//     evCodeMap[EC_BUFFERING_DATA]            = "EC_BUFFERING_DATA";
-//     evCodeMap[EC_FULLSCREEN_LOST]           = "EC_FULLSCREEN_LOST";
-//     evCodeMap[EC_ACTIVATE]                  = "EC_ACTIVATE";
-//     evCodeMap[EC_NEED_RESTART]              = "EC_NEED_RESTART";
-//     evCodeMap[EC_WINDOW_DESTROYED]          = "EC_WINDOW_DESTROYED";
-//     evCodeMap[EC_DISPLAY_CHANGED]           = "EC_DISPLAY_CHANGED";
-//     evCodeMap[EC_STARVATION]                = "EC_STARVATION";
-//     evCodeMap[EC_OLE_EVENT]                 = "EC_OLE_EVENT";
-//     evCodeMap[EC_NOTIFY_WINDOW]             = "EC_NOTIFY_WINDOW";
-//     evCodeMap[EC_STREAM_CONTROL_STOPPED]    = "EC_STREAM_CONTROL_STOPPED";
-//     evCodeMap[EC_STREAM_CONTROL_STARTED]    = "EC_STREAM_CONTROL_STARTED";
-//     evCodeMap[EC_END_OF_SEGMENT]            = "EC_END_OF_SEGMENT";
-//     evCodeMap[EC_SEGMENT_STARTED]           = "EC_SEGMENT_STARTED";
-//     evCodeMap[EC_LENGTH_CHANGED]            = "EC_LENGTH_CHANGED";
-//     evCodeMap[EC_DEVICE_LOST]               = "EC_DEVICE_LOST";
-
-//     auto it = evCodeMap.find(evCode);
-//     if (it == evCodeMap.end())
-//         throw 0;
-
-//     // Add more event codes as needed
-
-//     return it->second;
-// }
+    IMoniker* moniker{};
+    while (enumerator->Next(1, &moniker, nullptr) == S_OK)
+    {
+        if (get_webcam_id(moniker) == device_id)
+            return moniker;
+    }
+    throw CaptureException{Error_WebcamUnplugged{}}; // Webcam not found
+}
 
 CaptureImpl::CaptureImpl(DeviceId const& device_id, Resolution const& requested_resolution)
 {
     CoInitializeIFN();
 
-    auto pBuilder = AutoRelease<ICaptureGraphBuilder2>{CLSID_CaptureGraphBuilder2};
-    auto pGraph   = AutoRelease<IGraphBuilder>{CLSID_FilterGraph};
-    THROW_IF_ERR(pBuilder->SetFiltergraph(pGraph));
-
-    // Obtenir l'objet Moniker correspondant au périphérique sélectionné
-    AutoRelease<ICreateDevEnum> pDevEnum{CLSID_SystemDeviceEnum};
-
-    auto pEnum = AutoRelease<IEnumMoniker>{};
-    THROW_IF_ERR(pDevEnum->CreateClassEnumerator(CLSID_VideoInputDeviceCategory, &pEnum, 0));
-
-    auto pMoniker = AutoRelease<IMoniker>{};
-    while (pEnum->Next(1, &pMoniker, NULL) == S_OK)
-    {
-        if (find_webcam_id(pMoniker) == device_id)
-            break;
-        // TODO error if webcam is not found
-    }
-    // Liaison au filtre de capture du périphérique sélectionné
-
-    IBaseFilter* pCap = nullptr;
-    THROW_IF_ERR(pMoniker->BindToObject(0, 0, IID_IBaseFilter, (void**)&pCap));
-    THROW_IF_ERR(pGraph->AddFilter(pCap, L"CaptureFilter"));
+    auto builder = AutoRelease<ICaptureGraphBuilder2>{CLSID_CaptureGraphBuilder2};
+    auto graph   = AutoRelease<IGraphBuilder>{CLSID_FilterGraph};
+    THROW_IF_ERR(builder->SetFiltergraph(graph));
+    auto         moniker = AutoRelease<IMoniker>{find_moniker(device_id)};
+    IBaseFilter* pCap    = nullptr;
+    THROW_IF_ERR(moniker->BindToObject(0, 0, IID_IBaseFilter, (void**)&pCap));
+    THROW_IF_ERR(graph->AddFilter(pCap, L"CaptureFilter"));
 
     IAMStreamConfig* pConfig = NULL;
-    HRESULT          hr      = pBuilder->FindInterface(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, pCap, IID_IAMStreamConfig, (void**)&pConfig);
+    HRESULT          hr      = builder->FindInterface(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, pCap, IID_IAMStreamConfig, (void**)&pConfig);
     AM_MEDIA_TYPE*   pmt;
     hr = pConfig->GetFormat(&pmt); // Get the current format
 
@@ -316,7 +254,7 @@ CaptureImpl::CaptureImpl(DeviceId const& device_id, Resolution const& requested_
             // Handle error
         }
 
-        DeleteMediaType(pmt);
+        delete_media_type(pmt);
     }
     else
     {
@@ -351,26 +289,26 @@ CaptureImpl::CaptureImpl(DeviceId const& device_id, Resolution const& requested_
     THROW_IF_ERR(pSampleGrabber->SetBufferSamples(false));
 
     // Add the sample grabber to the graph
-    THROW_IF_ERR(pGraph->AddFilter(pSampleGrabberFilter, L"Sample Grabber"));
+    THROW_IF_ERR(graph->AddFilter(pSampleGrabberFilter, L"Sample Grabber"));
     // 6. Retrieve the Video Information Header
 
     { // Tell the graph to process the samples as fast as possible, instead of trying to sync to a clock (cf. https://learn.microsoft.com/en-us/windows/win32/api/strmif/nf-strmif-imediafilter-setsyncsource)
         auto media_filter = AutoRelease<IMediaFilter>{};
-        THROW_IF_ERR(pGraph->QueryInterface(IID_IMediaFilter, reinterpret_cast<void**>(&media_filter))); // NOLINT(*reinterpret-cast)
+        THROW_IF_ERR(graph->QueryInterface(IID_IMediaFilter, reinterpret_cast<void**>(&media_filter))); // NOLINT(*reinterpret-cast)
         media_filter->SetSyncSource(nullptr);
     }
     // 5. Render the Stream
     AutoRelease<IBaseFilter> pNullRenderer{CLSID_NullRenderer};
-    THROW_IF_ERR(pGraph->AddFilter(pNullRenderer, L"Null Renderer"));
+    THROW_IF_ERR(graph->AddFilter(pNullRenderer, L"Null Renderer"));
 
-    THROW_IF_ERR(pBuilder->RenderStream(&PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, pCap, pSampleGrabberFilter, pNullRenderer)); // Check that PIN_CATEGORY_PREVIEW is indeed more performant than PIN_CATEGORY_CAPTURE
+    THROW_IF_ERR(builder->RenderStream(&PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, pCap, pSampleGrabberFilter, pNullRenderer)); // Check that PIN_CATEGORY_PREVIEW is indeed more performant than PIN_CATEGORY_CAPTURE
 
     // 7. Start the Graph
-    THROW_IF_ERR(pGraph->QueryInterface(IID_IMediaControl, (void**)&_media_control));
+    THROW_IF_ERR(graph->QueryInterface(IID_IMediaControl, (void**)&_media_control));
     THROW_IF_ERR(_media_control->Run());
     {
         auto _media_event = AutoRelease<IMediaEventEx>{};
-        THROW_IF_ERR(pGraph->QueryInterface(IID_IMediaEventEx, (void**)&_media_event));
+        THROW_IF_ERR(graph->QueryInterface(IID_IMediaEventEx, (void**)&_media_event));
         long     evCode;
         LONG_PTR param1, param2;
         bool     disconnected = false;
@@ -496,7 +434,7 @@ auto grab_all_infos_impl() -> std::vector<Info>
         // if (SUCCEEDED(hr))
         {
             auto       available_resolutions = std::vector<Resolution>{};
-            auto const webcam_name           = find_webcam_name(pMoniker);
+            auto const webcam_name           = get_webcam_name(pMoniker);
             auto const it                    = resolutions_cache.find(webcam_name);
             if (it != resolutions_cache.end())
             {
@@ -511,7 +449,7 @@ auto grab_all_infos_impl() -> std::vector<Info>
             }
             if (!available_resolutions.empty())
             {
-                infos.push_back({webcam_name, find_webcam_id(pMoniker), available_resolutions});
+                infos.push_back({webcam_name, get_webcam_id(pMoniker), available_resolutions});
             }
         }
         // else

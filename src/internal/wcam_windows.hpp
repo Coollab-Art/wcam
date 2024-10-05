@@ -26,8 +26,8 @@ public:
     STDMETHODIMP BufferCB(double /* Time */, BYTE* pBuffer, long BufferLen) override; // NOLINT(*runtime-int)
 
 private:
-    Resolution _resolution;
-    GUID       _video_format; // At the moment we support MEDIASUBTYPE_RGB24 and MEDIASUBTYPE_NV12 (which is required for the OBS virtual camera)
+    Resolution _resolution{};
+    GUID       _video_format{}; // At the moment we support MEDIASUBTYPE_RGB24 and MEDIASUBTYPE_NV12 (which is required for the OBS virtual camera)
 
     IMediaControl* _media_control{};
     ULONG          _ref_count{0};
