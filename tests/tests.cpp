@@ -125,14 +125,15 @@ public:
         }
         if (capture.has_value())
         {
-            auto const maybe_image = capture->image();
             std::visit(
                 wcam::overloaded{
                     [&](std::shared_ptr<wcam::Image const> const& imag) {
                         image      = imag;
+                        error_msg  = "";
                         is_loading = false;
                     },
                     [&](wcam::CaptureError const& error) {
+                        image      = nullptr;
                         error_msg  = wcam::to_string(error);
                         is_loading = false;
                     },
@@ -141,13 +142,12 @@ public:
                         is_loading = false;
                     },
                     [&](wcam::ImageNotInitYet) {
+                        image      = nullptr; // Reset the image, otherwise we would show the image from the previous capture while the new capture hasn't returned any image yet
                         error_msg  = "";
                         is_loading = true;
-                        // Reset the image, otherwise it will show briefly when opening the next webcam (while the new capture hasn't returned any image yet) / when a capture needs to restart because the camera was unplugged and then plugged back
-                        image = nullptr;
                     }
                 },
-                maybe_image
+                capture->image()
             );
             if (error_msg.empty())
             {
@@ -155,7 +155,7 @@ public:
                     ImGui::TextUnformatted("LOADING");
                 if (image != nullptr)
                 {
-                    auto const& im     = *static_cast<Image const*>(image.get());
+                    auto const& im     = *static_cast<Image const*>(image.get()); // NOLINT(*static-cast-downcast)
                     bool const  flip_y = im.row_order() == wcam::FirstRowIs::Bottom;
 
                     auto const w = ImGui::GetContentRegionAvail().x;

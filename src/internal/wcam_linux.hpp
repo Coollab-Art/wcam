@@ -25,9 +25,7 @@ private:
     void startCapture();
 
 private:
-    MaybeImage _image{ImageNotInitYet{}};
     Resolution _resolution;
-    std::mutex _mutex{};
 
     int                 fd{-1};
     std::vector<Buffer> buffers;

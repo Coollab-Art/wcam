@@ -21,15 +21,11 @@ namespace wcam::internal {
 auto convert_wstr_to_str(BSTR const& wstr) -> std::string
 {
     int const wstr_len = static_cast<int>(SysStringLen(wstr));
-    // Determine the size of the resulting string
-    int const res_len = WideCharToMultiByte(CP_UTF8, 0, wstr, wstr_len, nullptr, 0, nullptr, nullptr);
+    int const res_len  = WideCharToMultiByte(CP_UTF8, 0, wstr, wstr_len, nullptr, 0, nullptr, nullptr);
     if (res_len == 0)
         return "";
 
-    // Allocate the necessary buffer
     auto res = std::string(res_len, 0);
-
-    // Perform the conversion
     WideCharToMultiByte(CP_UTF8, 0, wstr, wstr_len, res.data(), res_len, nullptr, nullptr);
     return res;
 }
@@ -112,17 +108,10 @@ static void CoInitializeIFN()
     thread_local Raii instance{}; // Each thread needs to call CoInitializeEx once
 }
 
-STDMETHODIMP_(ULONG)
-CaptureImpl::AddRef()
-{
-    return InterlockedIncrement(&_ref_count);
-}
-
-STDMETHODIMP_(ULONG)
-CaptureImpl::Release()
-{
-    return InterlockedDecrement(&_ref_count);
-}
+// clang-format off
+STDMETHODIMP_(ULONG) CaptureImpl::AddRef() { return InterlockedIncrement(&_ref_count); }
+STDMETHODIMP_(ULONG) CaptureImpl::Release() { return InterlockedDecrement(&_ref_count); }
+// clang-format on
 
 STDMETHODIMP CaptureImpl::QueryInterface(REFIID riid, void** ppv)
 {
@@ -432,17 +421,8 @@ STDMETHODIMP CaptureImpl::BufferCB(double /* Time */, BYTE* pBuffer, long Buffer
         assert(false && "Unsupported pixel format! Please contact the library authors to ask them to add this format.");
     }
 
-    {
-        std::unique_lock lock{_mutex};
-        _image = image;
-    }
+    set_image(std::move(image));
     return S_OK;
-}
-
-auto CaptureImpl::image() -> MaybeImage
-{
-    std::lock_guard lock{_mutex};
-    return _image;
 }
 
 CaptureImpl::~CaptureImpl()

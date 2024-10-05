@@ -1,6 +1,5 @@
 #pragma once
 #if defined(_WIN32)
-#include <mutex>
 #include "../DeviceId.hpp"
 #include "ICaptureImpl.hpp"
 #include "qedit.h"
@@ -18,8 +17,6 @@ public:
     CaptureImpl(CaptureImpl&&) noexcept                    = delete;
     auto operator=(CaptureImpl&&) noexcept -> CaptureImpl& = delete;
 
-    auto image() -> MaybeImage override;
-
     // clang-format off
     STDMETHODIMP_(ULONG) AddRef() override;
     STDMETHODIMP_(ULONG) Release() override;
@@ -29,10 +26,8 @@ public:
     STDMETHODIMP BufferCB(double /* Time */, BYTE* pBuffer, long BufferLen) override; // NOLINT(*runtime-int)
 
 private:
-    MaybeImage _image{ImageNotInitYet{}};
     Resolution _resolution;
     GUID       _video_format; // At the moment we support MEDIASUBTYPE_RGB24 and MEDIASUBTYPE_NV12 (which is required for the OBS virtual camera)
-    std::mutex _mutex{};
 
     IMediaControl* _media_control{};
     ULONG          _ref_count{0};
