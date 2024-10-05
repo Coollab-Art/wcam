@@ -138,6 +138,44 @@ private:
     VARIANT _variant{};
 };
 
+class MediaTypeRAII {
+public:
+    MediaTypeRAII() = default;
+    ~MediaTypeRAII()
+    {
+        if (_media_type == nullptr)
+            return;
+
+        if (_media_type->cbFormat != 0)
+        {
+            CoTaskMemFree((PVOID)_media_type->pbFormat); // NOLINT(*readability-casting)
+            _media_type->cbFormat = 0;
+            _media_type->pbFormat = nullptr;
+        }
+        if (_media_type->pUnk != nullptr)
+        {
+            _media_type->pUnk->Release();
+            _media_type->pUnk = nullptr;
+        }
+        CoTaskMemFree(_media_type);
+    }
+    MediaTypeRAII(MediaTypeRAII const&)                = delete;
+    MediaTypeRAII& operator=(MediaTypeRAII const&)     = delete;
+    MediaTypeRAII(MediaTypeRAII&&) noexcept            = delete;
+    MediaTypeRAII& operator=(MediaTypeRAII&&) noexcept = delete;
+
+    operator AM_MEDIA_TYPE*() { return _media_type; } // NOLINT(*explicit*)
+    auto            operator->() -> AM_MEDIA_TYPE* { return _media_type; }
+    auto            operator->() const -> AM_MEDIA_TYPE const* { return _media_type; }
+    AM_MEDIA_TYPE** operator&() // NOLINT(*runtime-operator)
+    {
+        return &_media_type;
+    }
+
+private:
+    AM_MEDIA_TYPE* _media_type{};
+};
+
 // clang-format off
 STDMETHODIMP_(ULONG) CaptureImpl::AddRef() { return InterlockedIncrement(&_ref_count); }
 STDMETHODIMP_(ULONG) CaptureImpl::Release() { return InterlockedDecrement(&_ref_count); }
@@ -186,25 +224,6 @@ static auto get_webcam_id(IMoniker* moniker) -> DeviceId
     return make_device_id(convert_wstr_to_str(device_path->bstrVal));
 }
 
-static void delete_media_type(AM_MEDIA_TYPE* pmt)
-{
-    if (pmt == nullptr)
-        return;
-
-    if (pmt->cbFormat != 0)
-    {
-        CoTaskMemFree((PVOID)pmt->pbFormat); // NOLINT(*readability-casting)
-        pmt->cbFormat = 0;
-        pmt->pbFormat = nullptr;
-    }
-    if (pmt->pUnk != nullptr)
-    {
-        pmt->pUnk->Release();
-        pmt->pUnk = nullptr;
-    }
-    CoTaskMemFree(pmt);
-}
-
 static auto find_moniker(DeviceId const& device_id) -> IMoniker*
 {
     auto dev_enum   = AutoRelease<ICreateDevEnum>{CLSID_SystemDeviceEnum};
@@ -227,34 +246,34 @@ CaptureImpl::CaptureImpl(DeviceId const& device_id, Resolution const& requested_
     auto builder = AutoRelease<ICaptureGraphBuilder2>{CLSID_CaptureGraphBuilder2};
     auto graph   = AutoRelease<IGraphBuilder>{CLSID_FilterGraph};
     THROW_IF_ERR(builder->SetFiltergraph(graph));
-    auto         moniker = AutoRelease<IMoniker>{find_moniker(device_id)};
-    IBaseFilter* pCap    = nullptr;
-    THROW_IF_ERR(moniker->BindToObject(0, 0, IID_IBaseFilter, (void**)&pCap));
-    THROW_IF_ERR(graph->AddFilter(pCap, L"CaptureFilter"));
 
-    IAMStreamConfig* pConfig = NULL;
-    HRESULT          hr      = builder->FindInterface(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, pCap, IID_IAMStreamConfig, (void**)&pConfig);
-    AM_MEDIA_TYPE*   pmt;
-    hr = pConfig->GetFormat(&pmt); // Get the current format
+    auto moniker = AutoRelease<IMoniker>{find_moniker(device_id)};
+
+    auto capture_filter = AutoRelease<IBaseFilter>{};
+    THROW_IF_ERR(moniker->BindToObject(nullptr, nullptr, IID_IBaseFilter, reinterpret_cast<void**>(&capture_filter))); // NOLINT(*reinterpret-cast)
+    THROW_IF_ERR(graph->AddFilter(capture_filter, L"CaptureFilter"));
+
+    auto    config     = AutoRelease<IAMStreamConfig>{};
+    HRESULT hr         = builder->FindInterface(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, capture_filter, IID_IAMStreamConfig, reinterpret_cast<void**>(&config)); // NOLINT(*reinterpret-cast)
+    auto    media_type = MediaTypeRAII{};
+    hr                 = config->GetFormat(&media_type); // Get the current format
 
     if (SUCCEEDED(hr))
     {
         // VIDEOINFOHEADER structure contains the format details
-        VIDEOINFOHEADER* pVih = (VIDEOINFOHEADER*)pmt->pbFormat;
+        VIDEOINFOHEADER* pVih = (VIDEOINFOHEADER*)media_type->pbFormat;
 
         // Set desired width and height
         pVih->bmiHeader.biWidth  = requested_resolution.width();
         pVih->bmiHeader.biHeight = requested_resolution.height();
 
         // Set the modified format
-        hr = pConfig->SetFormat(pmt);
+        hr = config->SetFormat(media_type);
 
         if (FAILED(hr))
         {
             // Handle error
         }
-
-        delete_media_type(pmt);
     }
     else
     {
@@ -301,7 +320,7 @@ CaptureImpl::CaptureImpl(DeviceId const& device_id, Resolution const& requested_
     AutoRelease<IBaseFilter> pNullRenderer{CLSID_NullRenderer};
     THROW_IF_ERR(graph->AddFilter(pNullRenderer, L"Null Renderer"));
 
-    THROW_IF_ERR(builder->RenderStream(&PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, pCap, pSampleGrabberFilter, pNullRenderer)); // Check that PIN_CATEGORY_PREVIEW is indeed more performant than PIN_CATEGORY_CAPTURE
+    THROW_IF_ERR(builder->RenderStream(&PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, capture_filter, pSampleGrabberFilter, pNullRenderer)); // Check that PIN_CATEGORY_PREVIEW is indeed more performant than PIN_CATEGORY_CAPTURE
 
     // 7. Start the Graph
     THROW_IF_ERR(graph->QueryInterface(IID_IMediaControl, (void**)&_media_control));
