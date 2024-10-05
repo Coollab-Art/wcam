@@ -239,6 +239,18 @@ static auto find_moniker(DeviceId const& device_id) -> IMoniker*
     throw CaptureException{Error_WebcamUnplugged{}}; // Webcam not found
 }
 
+static void set_resolution(IAMStreamConfig* config, Resolution const& resolution)
+{
+    auto media_type = MediaTypeRAII{};
+    THROW_IF_ERR(config->GetFormat(&media_type));
+
+    // Change resolution
+    reinterpret_cast<VIDEOINFOHEADER*>(media_type->pbFormat)->bmiHeader.biWidth  = static_cast<LONG>(resolution.width());  // NOLINT(*reinterpret-cast)
+    reinterpret_cast<VIDEOINFOHEADER*>(media_type->pbFormat)->bmiHeader.biHeight = static_cast<LONG>(resolution.height()); // NOLINT(*reinterpret-cast)
+
+    THROW_IF_ERR(config->SetFormat(media_type));
+}
+
 CaptureImpl::CaptureImpl(DeviceId const& device_id, Resolution const& requested_resolution)
 {
     CoInitializeIFN();
@@ -253,34 +265,9 @@ CaptureImpl::CaptureImpl(DeviceId const& device_id, Resolution const& requested_
     THROW_IF_ERR(moniker->BindToObject(nullptr, nullptr, IID_IBaseFilter, reinterpret_cast<void**>(&capture_filter))); // NOLINT(*reinterpret-cast)
     THROW_IF_ERR(graph->AddFilter(capture_filter, L"CaptureFilter"));
 
-    auto    config     = AutoRelease<IAMStreamConfig>{};
-    HRESULT hr         = builder->FindInterface(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, capture_filter, IID_IAMStreamConfig, reinterpret_cast<void**>(&config)); // NOLINT(*reinterpret-cast)
-    auto    media_type = MediaTypeRAII{};
-    hr                 = config->GetFormat(&media_type); // Get the current format
-
-    if (SUCCEEDED(hr))
-    {
-        // VIDEOINFOHEADER structure contains the format details
-        VIDEOINFOHEADER* pVih = (VIDEOINFOHEADER*)media_type->pbFormat;
-
-        // Set desired width and height
-        pVih->bmiHeader.biWidth  = requested_resolution.width();
-        pVih->bmiHeader.biHeight = requested_resolution.height();
-
-        // Set the modified format
-        hr = config->SetFormat(media_type);
-
-        if (FAILED(hr))
-        {
-            // Handle error
-        }
-    }
-    else
-    {
-        // Handle error
-    }
-
-    // 4. Add and Configure the Sample Grabber
+    auto config = AutoRelease<IAMStreamConfig>{};
+    THROW_IF_ERR(builder->FindInterface(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, capture_filter, IID_IAMStreamConfig, reinterpret_cast<void**>(&config))); // NOLINT(*reinterpret-cast)
+    set_resolution(config, requested_resolution);
 
     AutoRelease<IBaseFilter>    pSampleGrabberFilter{CLSID_SampleGrabber};
     AutoRelease<ISampleGrabber> pSampleGrabber{};
