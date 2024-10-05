@@ -359,19 +359,16 @@ CaptureImpl::CaptureImpl(DeviceId const& device_id, Resolution const& requested_
     _resolution = get_actual_resolution(sample_grabber, _video_format);
 }
 
-STDMETHODIMP CaptureImpl::BufferCB(double /* Time */, BYTE* pBuffer, long BufferLen)
+STDMETHODIMP CaptureImpl::BufferCB(double /* time */, BYTE* buffer, long buffer_length) // NOLINT(*runtime-int)
 {
     auto image = image_factory().make_image();
-    image->set_resolution(_resolution);
     if (_video_format == MEDIASUBTYPE_RGB24)
     {
-        image->set_row_order(wcam::FirstRowIs::Bottom);
-        image->set_data(ImageDataView<BGR24>{pBuffer, static_cast<size_t>(BufferLen), _resolution});
+        image->set_data(ImageDataView<BGR24>{buffer, static_cast<size_t>(buffer_length), _resolution, wcam::FirstRowIs::Bottom});
     }
     else if (_video_format == MEDIASUBTYPE_NV12)
     {
-        image->set_row_order(wcam::FirstRowIs::Top);
-        image->set_data(ImageDataView<NV12>{pBuffer, static_cast<size_t>(BufferLen), _resolution});
+        image->set_data(ImageDataView<NV12>{buffer, static_cast<size_t>(buffer_length), _resolution, wcam::FirstRowIs::Top});
     }
     else
     {

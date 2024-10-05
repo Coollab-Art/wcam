@@ -68,8 +68,14 @@ public:
         return static_cast<ImTextureID>(reinterpret_cast<void*>(static_cast<uint64_t>(_texture_id))); // NOLINT(performance-no-int-to-ptr, *reinterpret-cast)
     }
 
+    auto width() const { return _resolution.width(); }
+    auto height() const { return _resolution.height(); }
+    auto row_order() const -> wcam::FirstRowIs { return _row_order; }
+
     void set_data(wcam::ImageDataView<wcam::RGB24> const& rgb_data) override
     {
+        _resolution  = rgb_data.resolution();
+        _row_order   = rgb_data.row_order();
         _gen_texture = [owned_rgb_data = rgb_data.to_owning(), this]() {
             glBindTexture(GL_TEXTURE_2D, _texture_id);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, static_cast<GLsizei>(owned_rgb_data.resolution().width()), static_cast<GLsizei>(owned_rgb_data.resolution().height()), 0, GL_RGB, GL_UNSIGNED_BYTE, owned_rgb_data.data());
@@ -78,6 +84,8 @@ public:
 
     void set_data(wcam::ImageDataView<wcam::BGR24> const& bgr_data) override
     {
+        _resolution  = bgr_data.resolution();
+        _row_order   = bgr_data.row_order();
         _gen_texture = [owned_bgr_data = bgr_data.to_owning(), this]() {
             glBindTexture(GL_TEXTURE_2D, _texture_id);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, static_cast<GLsizei>(owned_bgr_data.resolution().width()), static_cast<GLsizei>(owned_bgr_data.resolution().height()), 0, GL_BGR, GL_UNSIGNED_BYTE, owned_bgr_data.data());
@@ -87,6 +95,8 @@ public:
 private:
     mutable GLuint                               _texture_id{0};
     mutable std::optional<std::function<void()>> _gen_texture{}; // Since OpenGL calls must happen on the main thread, when set_data is called (from another thread) we just store the thing to do in this function, and call it later, on the main thread
+    wcam::Resolution                             _resolution{};
+    wcam::FirstRowIs                             _row_order{};
 };
 
 class WebcamWindow {

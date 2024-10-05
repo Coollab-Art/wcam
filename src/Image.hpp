@@ -34,24 +34,28 @@ struct NV12 {
 template<typename PixelFormatT>
 class ImageData {
 public:
-    ImageData(std::shared_ptr<uint8_t const> data, Resolution resolution)
+    ImageData(std::shared_ptr<uint8_t const> data, Resolution resolution, wcam::FirstRowIs row_order)
         : _data{std::move(data)}
         , _resolution{resolution}
+        , _row_order{row_order}
     {}
     auto data() const -> uint8_t const* { return _data.get(); }
     auto resolution() const -> Resolution { return _resolution; }
+    auto row_order() const -> wcam::FirstRowIs { return _row_order; }
 
 private:
     std::shared_ptr<uint8_t const> _data{};
     Resolution                     _resolution{};
+    wcam::FirstRowIs               _row_order{};
 };
 
 template<typename PixelFormatT>
 class ImageDataView {
 public:
-    ImageDataView(std::variant<uint8_t const*, std::shared_ptr<uint8_t const>> data, size_t data_length, Resolution resolution)
+    ImageDataView(std::variant<uint8_t const*, std::shared_ptr<uint8_t const>> data, size_t data_length, Resolution resolution, wcam::FirstRowIs row_order)
         : _data{std::move(data)}
         , _resolution{resolution}
+        , _row_order{row_order}
     {
         assert(PixelFormatT::data_length(_resolution) == data_length);
         std::ignore = data_length; // Disable warning in release
@@ -64,10 +68,10 @@ public:
                 [&](uint8_t const* data) {
                     auto* res = new uint8_t[PixelFormatT::data_length(_resolution)]; // NOLINT(*owning-memory)
                     memcpy(res, data, PixelFormatT::data_length(_resolution));
-                    return ImageData<PixelFormatT>{std::shared_ptr<uint8_t const>{res}, _resolution};
+                    return ImageData<PixelFormatT>{std::shared_ptr<uint8_t const>{res}, _resolution, _row_order};
                 },
                 [&](std::shared_ptr<uint8_t const> const& data) {
-                    return ImageData<PixelFormatT>{data, _resolution};
+                    return ImageData<PixelFormatT>{data, _resolution, _row_order};
                 },
             },
             _data
@@ -90,10 +94,12 @@ public:
     }
 
     auto resolution() const -> Resolution { return _resolution; }
+    auto row_order() const -> wcam::FirstRowIs { return _row_order; }
 
 private:
     std::variant<uint8_t const*, std::shared_ptr<uint8_t const>> _data{};
     Resolution                                                   _resolution{};
+    wcam::FirstRowIs                                             _row_order{};
 };
 
 class Image {
@@ -105,21 +111,9 @@ public:
     Image(Image&&) noexcept                    = delete;
     auto operator=(Image&&) noexcept -> Image& = delete;
 
-    auto resolution() const -> Resolution { return _resolution; }
-    auto width() const -> Resolution::DataType { return _resolution.width(); }
-    auto height() const -> Resolution::DataType { return _resolution.height(); }
-    auto row_order() const -> wcam::FirstRowIs { return _row_order; }
-
     virtual void set_data(ImageDataView<RGB24> const&) = 0;
     virtual void set_data(ImageDataView<BGR24> const&);
     virtual void set_data(ImageDataView<NV12> const&);
-
-    void set_resolution(Resolution resolution) { _resolution = resolution; }
-    void set_row_order(wcam::FirstRowIs row_order) { _row_order = row_order; }
-
-private:
-    Resolution       _resolution{};
-    wcam::FirstRowIs _row_order{};
 };
 
 } // namespace wcam

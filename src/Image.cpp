@@ -71,7 +71,8 @@ void Image::set_data(ImageDataView<BGR24> const& bgrData)
     set_data(ImageDataView<RGB24>{
         BGR24_to_RGB24(bgrData.data(), bgrData.resolution()),
         RGB24::data_length(bgrData.resolution()),
-        bgrData.resolution()
+        bgrData.resolution(),
+        bgrData.row_order()
     });
 }
 
@@ -80,7 +81,8 @@ void Image::set_data(ImageDataView<NV12> const& nv12_data)
     set_data(ImageDataView<RGB24>{
         NV12_to_RGB24(nv12_data.data(), nv12_data.resolution()),
         RGB24::data_length(nv12_data.resolution()),
-        nv12_data.resolution()
+        nv12_data.resolution(),
+        nv12_data.row_order()
     });
 }
 
