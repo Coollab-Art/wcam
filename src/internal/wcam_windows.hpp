@@ -26,6 +26,9 @@ public:
     STDMETHODIMP BufferCB(double /* Time */, BYTE* pBuffer, long BufferLen) override; // NOLINT(*runtime-int)
 
 private:
+    void configure_sample_grabber(ISampleGrabber* sample_grabber);
+
+private:
     Resolution _resolution{};
     GUID       _video_format{}; // At the moment we support MEDIASUBTYPE_RGB24 and MEDIASUBTYPE_NV12 (which is required for the OBS virtual camera)
 

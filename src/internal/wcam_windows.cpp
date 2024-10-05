@@ -251,7 +251,41 @@ static void set_resolution(IAMStreamConfig* config, Resolution const& resolution
     THROW_IF_ERR(config->SetFormat(media_type));
 }
 
+static auto select_video_format(DeviceId const& device_id) -> GUID
+{
+    if (device_id.as_string().find("OBS") != std::string::npos
+        || device_id.as_string().find("Streamlabs") != std::string::npos)
+    {
+        // OBS Virtual Camera always returns S_OK on SetFormat(), even if it doesn't support the actual format.
+        // So we have to choose a format that it supports manually, e.g. NV12.
+        // See https://github.com/opencv/opencv/issues/19746#issuecomment-1383056787
+        return MEDIASUBTYPE_NV12;
+    }
+    return MEDIASUBTYPE_RGB24;
+}
+
+void CaptureImpl::configure_sample_grabber(ISampleGrabber* sample_grabber)
+{
+    AM_MEDIA_TYPE media_type;
+    ZeroMemory(&media_type, sizeof(AM_MEDIA_TYPE));
+    media_type.majortype = MEDIATYPE_Video;
+    media_type.subtype   = _video_format;
+    THROW_IF_ERR(sample_grabber->SetMediaType(&media_type));
+    THROW_IF_ERR(sample_grabber->SetOneShot(false));
+    THROW_IF_ERR(sample_grabber->SetBufferSamples(false));
+    THROW_IF_ERR(sample_grabber->SetCallback(this, 1));
+}
+
+static void tell_the_graph_to_process_samples_as_fast_as_possible(IGraphBuilder* graph)
+{
+    // Tell the graph to process the samples as fast as possible, instead of trying to sync to a clock (cf. https://learn.microsoft.com/en-us/windows/win32/api/strmif/nf-strmif-imediafilter-setsyncsource)
+    auto media_filter = AutoRelease<IMediaFilter>{};
+    THROW_IF_ERR(graph->QueryInterface(IID_IMediaFilter, reinterpret_cast<void**>(&media_filter))); // NOLINT(*reinterpret-cast)
+    media_filter->SetSyncSource(nullptr);
+}
+
 CaptureImpl::CaptureImpl(DeviceId const& device_id, Resolution const& requested_resolution)
+    : _video_format{select_video_format(device_id)}
 {
     CoInitializeIFN();
 
@@ -269,45 +303,19 @@ CaptureImpl::CaptureImpl(DeviceId const& device_id, Resolution const& requested_
     THROW_IF_ERR(builder->FindInterface(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, capture_filter, IID_IAMStreamConfig, reinterpret_cast<void**>(&config))); // NOLINT(*reinterpret-cast)
     set_resolution(config, requested_resolution);
 
-    AutoRelease<IBaseFilter>    pSampleGrabberFilter{CLSID_SampleGrabber};
-    AutoRelease<ISampleGrabber> pSampleGrabber{};
-    THROW_IF_ERR(pSampleGrabberFilter->QueryInterface(IID_ISampleGrabber, (void**)&pSampleGrabber));
+    auto sample_grabber_filter = AutoRelease<IBaseFilter>{CLSID_SampleGrabber};
+    auto sample_grabber        = AutoRelease<ISampleGrabber>{};
+    THROW_IF_ERR(sample_grabber_filter->QueryInterface(IID_ISampleGrabber, reinterpret_cast<void**>(&sample_grabber))); // NOLINT(*reinterpret-cast)
+    configure_sample_grabber(sample_grabber);
+    THROW_IF_ERR(graph->AddFilter(sample_grabber_filter, L"Sample Grabber"));
 
-    // Configure the sample grabber
-    if (device_id.as_string().find("OBS") != std::string::npos
-        || device_id.as_string().find("Streamlabs") != std::string::npos)
-    {
-        // OBS Virtual Camera always returns S_OK on SetFormat(), even if it doesn't support
-        // the actual format. So we have to choose a format that it supports manually, e.g. NV12.
-        // https://github.com/opencv/opencv/issues/19746#issuecomment-1383056787
-        _video_format = MEDIASUBTYPE_NV12;
+    tell_the_graph_to_process_samples_as_fast_as_possible(graph);
+
+    { // Disable the default output window by using a Null Renderer
+        auto null_renderer = AutoRelease<IBaseFilter>{CLSID_NullRenderer};
+        THROW_IF_ERR(graph->AddFilter(null_renderer, L"Null Renderer"));
+        THROW_IF_ERR(builder->RenderStream(&PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, capture_filter, sample_grabber_filter, null_renderer));
     }
-    else
-    {
-        _video_format = MEDIASUBTYPE_RGB24;
-    }
-    AM_MEDIA_TYPE mt;
-    ZeroMemory(&mt, sizeof(AM_MEDIA_TYPE));
-    mt.majortype = MEDIATYPE_Video;
-    mt.subtype   = _video_format;
-    THROW_IF_ERR(pSampleGrabber->SetMediaType(&mt));
-    THROW_IF_ERR(pSampleGrabber->SetOneShot(false));
-    THROW_IF_ERR(pSampleGrabber->SetBufferSamples(false));
-
-    // Add the sample grabber to the graph
-    THROW_IF_ERR(graph->AddFilter(pSampleGrabberFilter, L"Sample Grabber"));
-    // 6. Retrieve the Video Information Header
-
-    { // Tell the graph to process the samples as fast as possible, instead of trying to sync to a clock (cf. https://learn.microsoft.com/en-us/windows/win32/api/strmif/nf-strmif-imediafilter-setsyncsource)
-        auto media_filter = AutoRelease<IMediaFilter>{};
-        THROW_IF_ERR(graph->QueryInterface(IID_IMediaFilter, reinterpret_cast<void**>(&media_filter))); // NOLINT(*reinterpret-cast)
-        media_filter->SetSyncSource(nullptr);
-    }
-    // 5. Render the Stream
-    AutoRelease<IBaseFilter> pNullRenderer{CLSID_NullRenderer};
-    THROW_IF_ERR(graph->AddFilter(pNullRenderer, L"Null Renderer"));
-
-    THROW_IF_ERR(builder->RenderStream(&PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, capture_filter, pSampleGrabberFilter, pNullRenderer)); // Check that PIN_CATEGORY_PREVIEW is indeed more performant than PIN_CATEGORY_CAPTURE
 
     // 7. Start the Graph
     THROW_IF_ERR(graph->QueryInterface(IID_IMediaControl, (void**)&_media_control));
@@ -324,13 +332,15 @@ CaptureImpl::CaptureImpl(DeviceId const& device_id, Resolution const& requested_
             if (evCode == EC_ERRORABORT)
                 disconnected = true;
             _media_event->FreeEventParams(evCode, param1, param2);
+            if (disconnected)
+                break;
         }
         if (disconnected)
             throw CaptureException{Error_WebcamAlreadyUsedInAnotherApplication{}};
     }
 
     AM_MEDIA_TYPE mtGrabbed;
-    THROW_IF_ERR(pSampleGrabber->GetConnectedMediaType(&mtGrabbed));
+    THROW_IF_ERR(sample_grabber->GetConnectedMediaType(&mtGrabbed));
 
     VIDEOINFOHEADER* pVih = (VIDEOINFOHEADER*)mtGrabbed.pbFormat;
     _resolution           = Resolution{
@@ -342,8 +352,6 @@ CaptureImpl::CaptureImpl(DeviceId const& device_id, Resolution const& requested_
         (_video_format == MEDIASUBTYPE_RGB24 && pVih->bmiHeader.biSizeImage == _resolution.pixels_count() * 3)
         || (_video_format == MEDIASUBTYPE_NV12 && pVih->bmiHeader.biSizeImage == _resolution.pixels_count() * 3 / 2)
     );
-
-    THROW_IF_ERR(pSampleGrabber->SetCallback(this, 1));
 }
 
 STDMETHODIMP CaptureImpl::BufferCB(double /* Time */, BYTE* pBuffer, long BufferLen)
