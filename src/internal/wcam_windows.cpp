@@ -284,6 +284,26 @@ static void tell_the_graph_to_process_samples_as_fast_as_possible(IGraphBuilder*
     media_filter->SetSyncSource(nullptr);
 }
 
+static void throw_if_webcam_is_already_in_use(IGraphBuilder* graph)
+{
+    auto _media_event = AutoRelease<IMediaEventEx>{};
+    THROW_IF_ERR(graph->QueryInterface(IID_IMediaEventEx, (void**)&_media_event));
+    long     evCode;
+    LONG_PTR param1, param2;
+    bool     disconnected = false;
+
+    while (S_OK == _media_event->GetEvent(&evCode, &param1, &param2, 0))
+    {
+        if (evCode == EC_ERRORABORT)
+            disconnected = true;
+        _media_event->FreeEventParams(evCode, param1, param2);
+        if (disconnected)
+            break;
+    }
+    if (disconnected)
+        throw CaptureException{Error_WebcamAlreadyUsedInAnotherApplication{}};
+}
+
 CaptureImpl::CaptureImpl(DeviceId const& device_id, Resolution const& requested_resolution)
     : _video_format{select_video_format(device_id)}
 {
@@ -317,27 +337,10 @@ CaptureImpl::CaptureImpl(DeviceId const& device_id, Resolution const& requested_
         THROW_IF_ERR(builder->RenderStream(&PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, capture_filter, sample_grabber_filter, null_renderer));
     }
 
-    // 7. Start the Graph
-    THROW_IF_ERR(graph->QueryInterface(IID_IMediaControl, (void**)&_media_control));
+    // Start the Graph
+    THROW_IF_ERR(graph->QueryInterface(IID_IMediaControl, reinterpret_cast<void**>(&_media_control))); // NOLINT(*reinterpret-cast)
     THROW_IF_ERR(_media_control->Run());
-    {
-        auto _media_event = AutoRelease<IMediaEventEx>{};
-        THROW_IF_ERR(graph->QueryInterface(IID_IMediaEventEx, (void**)&_media_event));
-        long     evCode;
-        LONG_PTR param1, param2;
-        bool     disconnected = false;
-
-        while (S_OK == _media_event->GetEvent(&evCode, &param1, &param2, 0))
-        {
-            if (evCode == EC_ERRORABORT)
-                disconnected = true;
-            _media_event->FreeEventParams(evCode, param1, param2);
-            if (disconnected)
-                break;
-        }
-        if (disconnected)
-            throw CaptureException{Error_WebcamAlreadyUsedInAnotherApplication{}};
-    }
+    throw_if_webcam_is_already_in_use(graph); // Must be done after the graph is started
 
     AM_MEDIA_TYPE mtGrabbed;
     THROW_IF_ERR(sample_grabber->GetConnectedMediaType(&mtGrabbed));
