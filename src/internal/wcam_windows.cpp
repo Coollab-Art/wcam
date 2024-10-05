@@ -280,28 +280,24 @@ static void tell_the_graph_to_process_samples_as_fast_as_possible(IGraphBuilder*
 {
     // Tell the graph to process the samples as fast as possible, instead of trying to sync to a clock (cf. https://learn.microsoft.com/en-us/windows/win32/api/strmif/nf-strmif-imediafilter-setsyncsource)
     auto media_filter = AutoRelease<IMediaFilter>{};
-    THROW_IF_ERR(graph->QueryInterface(IID_IMediaFilter, reinterpret_cast<void**>(&media_filter))); // NOLINT(*reinterpret-cast)
+    THROW_IF_ERR(graph->QueryInterface(IID_IMediaFilter, (void**)&media_filter)); // NOLINT(*cstyle-cast)
     media_filter->SetSyncSource(nullptr);
 }
 
 static void throw_if_webcam_is_already_in_use(IGraphBuilder* graph)
 {
-    auto _media_event = AutoRelease<IMediaEventEx>{};
-    THROW_IF_ERR(graph->QueryInterface(IID_IMediaEventEx, (void**)&_media_event));
-    long     evCode;
-    LONG_PTR param1, param2;
-    bool     disconnected = false;
+    auto media_event = AutoRelease<IMediaEventEx>{};
+    THROW_IF_ERR(graph->QueryInterface(IID_IMediaEventEx, (void**)&media_event)); // NOLINT(*cstyle-cast)
 
-    while (S_OK == _media_event->GetEvent(&evCode, &param1, &param2, 0))
+    long     event_code;     // NOLINT(*runtime-int, *init-variables)
+    LONG_PTR param1, param2; // NOLINT(*isolate-declaration, *init-variables)
+    while (S_OK == media_event->GetEvent(&event_code, &param1, &param2, 0))
     {
-        if (evCode == EC_ERRORABORT)
-            disconnected = true;
-        _media_event->FreeEventParams(evCode, param1, param2);
-        if (disconnected)
-            break;
+        bool const is_already_in_use = event_code == EC_ERRORABORT;
+        media_event->FreeEventParams(event_code, param1, param2);
+        if (is_already_in_use)
+            throw CaptureException{Error_WebcamAlreadyUsedInAnotherApplication{}};
     }
-    if (disconnected)
-        throw CaptureException{Error_WebcamAlreadyUsedInAnotherApplication{}};
 }
 
 CaptureImpl::CaptureImpl(DeviceId const& device_id, Resolution const& requested_resolution)
@@ -316,16 +312,16 @@ CaptureImpl::CaptureImpl(DeviceId const& device_id, Resolution const& requested_
     auto moniker = AutoRelease<IMoniker>{find_moniker(device_id)};
 
     auto capture_filter = AutoRelease<IBaseFilter>{};
-    THROW_IF_ERR(moniker->BindToObject(nullptr, nullptr, IID_IBaseFilter, reinterpret_cast<void**>(&capture_filter))); // NOLINT(*reinterpret-cast)
+    THROW_IF_ERR(moniker->BindToObject(nullptr, nullptr, IID_IBaseFilter, (void**)&capture_filter)); // NOLINT(*cstyle-cast)
     THROW_IF_ERR(graph->AddFilter(capture_filter, L"CaptureFilter"));
 
     auto config = AutoRelease<IAMStreamConfig>{};
-    THROW_IF_ERR(builder->FindInterface(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, capture_filter, IID_IAMStreamConfig, reinterpret_cast<void**>(&config))); // NOLINT(*reinterpret-cast)
+    THROW_IF_ERR(builder->FindInterface(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, capture_filter, IID_IAMStreamConfig, (void**)&config)); // NOLINT(*cstyle-cast)
     set_resolution(config, requested_resolution);
 
     auto sample_grabber_filter = AutoRelease<IBaseFilter>{CLSID_SampleGrabber};
     auto sample_grabber        = AutoRelease<ISampleGrabber>{};
-    THROW_IF_ERR(sample_grabber_filter->QueryInterface(IID_ISampleGrabber, reinterpret_cast<void**>(&sample_grabber))); // NOLINT(*reinterpret-cast)
+    THROW_IF_ERR(sample_grabber_filter->QueryInterface(IID_ISampleGrabber, (void**)&sample_grabber)); // NOLINT(*cstyle-cast)
     configure_sample_grabber(sample_grabber);
     THROW_IF_ERR(graph->AddFilter(sample_grabber_filter, L"Sample Grabber"));
 
@@ -338,7 +334,7 @@ CaptureImpl::CaptureImpl(DeviceId const& device_id, Resolution const& requested_
     }
 
     // Start the Graph
-    THROW_IF_ERR(graph->QueryInterface(IID_IMediaControl, reinterpret_cast<void**>(&_media_control))); // NOLINT(*reinterpret-cast)
+    THROW_IF_ERR(graph->QueryInterface(IID_IMediaControl, (void**)&_media_control)); // NOLINT(*cstyle-cast)
     THROW_IF_ERR(_media_control->Run());
     throw_if_webcam_is_already_in_use(graph); // Must be done after the graph is started
 
