@@ -69,15 +69,15 @@ public:
         return static_cast<ImTextureID>(reinterpret_cast<void*>(static_cast<uint64_t>(_texture_id))); // NOLINT(performance-no-int-to-ptr, *reinterpret-cast)
     }
 
-    auto width() const { return _resolution.width(); }
-    auto height() const { return _resolution.height(); }
+    auto width() const -> wcam::Resolution::DataType { return _resolution.width(); }
+    auto height() const -> wcam::Resolution::DataType { return _resolution.height(); }
     auto row_order() const -> wcam::FirstRowIs { return _row_order; }
 
     void set_data(wcam::ImageDataView<wcam::RGB24> const& rgb_data) override
     {
         _resolution  = rgb_data.resolution();
         _row_order   = rgb_data.row_order();
-        _gen_texture = [owned_rgb_data = rgb_data.to_owning(), this]() {
+        _gen_texture = [owned_rgb_data = rgb_data.to_owning(), this]() { // rgb_data will not live past this function, so we need to take a copy (which will just be a move in some cases)
             glBindTexture(GL_TEXTURE_2D, _texture_id);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, static_cast<GLsizei>(owned_rgb_data.resolution().width()), static_cast<GLsizei>(owned_rgb_data.resolution().height()), 0, GL_RGB, GL_UNSIGNED_BYTE, owned_rgb_data.data());
         };
@@ -87,7 +87,7 @@ public:
     {
         _resolution  = bgr_data.resolution();
         _row_order   = bgr_data.row_order();
-        _gen_texture = [owned_bgr_data = bgr_data.to_owning(), this]() {
+        _gen_texture = [owned_bgr_data = bgr_data.to_owning(), this]() { // bgr_data will not live past this function, so we need to take a copy (which will just be a move in some cases)
             glBindTexture(GL_TEXTURE_2D, _texture_id);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, static_cast<GLsizei>(owned_bgr_data.resolution().width()), static_cast<GLsizei>(owned_bgr_data.resolution().height()), 0, GL_BGR, GL_UNSIGNED_BYTE, owned_bgr_data.data());
         };
@@ -104,8 +104,8 @@ class WebcamWindow {
 public:
     void update()
     {
-        timer.imgui_plot();
-        timer.start();
+        _timer.imgui_plot();
+        _timer.start();
 
         auto const webcam_infos = wcam::all_webcams_info();
         int        imgui_id{0};
@@ -131,87 +131,63 @@ public:
             }
 
             if (ImGui::Button("Open webcam"))
-                capture = wcam::open_webcam(info.id);
+                _webcam = wcam::open_webcam(info.id);
             ImGui::PopID();
         }
-        if (capture.has_value())
+        if (_webcam.has_value())
         {
+            _maybe_image = _webcam->image(); // We need to keep the image alive till the end of the frame, so we take a copy of the shared_ptr. The image stored in the _webcam can be destroyed at any time if a new image is created by the background thread
             std::visit(
                 wcam::overloaded{
-                    [&](std::shared_ptr<wcam::Image const> const& imag) {
-                        image      = imag;
-                        error_msg  = "";
-                        is_loading = false;
+                    [&](wcam::ImageNotInitYet) {
+                        ImGui::TextUnformatted("LOADING");
+                    },
+                    [&](std::shared_ptr<wcam::Image const> const& image) {
+                        auto const& im     = *static_cast<Image const*>(image.get()); // NOLINT(*static-cast-downcast)
+                        bool const  flip_y = im.row_order() == wcam::FirstRowIs::Bottom;
+
+                        auto const w = ImGui::GetContentRegionAvail().x;
+                        ImGui::Image(im.imgui_texture_id(), ImVec2{w, w / static_cast<float>(im.width()) * static_cast<float>(im.height())}, flip_y ? ImVec2(0., 1.) : ImVec2(0., 0.), flip_y ? ImVec2(1., 0.) : ImVec2(1., 1.));
+                        ImGui::Text("%d x %d", im.width(), im.height());
                     },
                     [&](wcam::CaptureError const& error) {
-                        image      = nullptr;
-                        error_msg  = wcam::to_string(error);
-                        is_loading = false;
-                    },
-                    [&](wcam::ImageNotInitYet) {
-                        image      = nullptr; // Reset the image, otherwise we would show the image from the previous capture while the new capture hasn't returned any image yet
-                        error_msg  = "";
-                        is_loading = true;
+                        ImGui::Text("ERROR: %s", wcam::to_string(error).c_str());
                     }
                 },
-                capture->image()
+                _maybe_image
             );
-            if (error_msg.empty())
-            {
-                if (is_loading)
-                    ImGui::TextUnformatted("LOADING");
-                if (image != nullptr)
-                {
-                    auto const& im     = *static_cast<Image const*>(image.get()); // NOLINT(*static-cast-downcast)
-                    bool const  flip_y = im.row_order() == wcam::FirstRowIs::Bottom;
-
-                    auto const w = ImGui::GetContentRegionAvail().x;
-                    ImGui::Image(im.imgui_texture_id(), ImVec2{w, w / static_cast<float>(im.width()) * static_cast<float>(im.height())}, flip_y ? ImVec2(0., 1.) : ImVec2(0., 0.), flip_y ? ImVec2(1., 0.) : ImVec2(1., 1.));
-                    ImGui::Text("%d x %d", im.width(), im.height());
-                }
-            }
-            else
-            {
-                ImGui::Text("ERROR: %s", error_msg.c_str());
-            }
             if (ImGui::Button("Close Webcam"))
             {
-                capture = std::nullopt;
+                _webcam      = std::nullopt;
+                _maybe_image = wcam::ImageNotInitYet{};
             }
         }
-        timer.stop();
+        _timer.stop();
     }
 
 private:
-    quick_imgui::AverageTime           timer{};
-    std::optional<wcam::SharedWebcam>  capture;
-    std::shared_ptr<wcam::Image const> image{};
-    std::string                        error_msg{};
-    bool                               is_loading{};
-    wcam::KeepLibraryAlive             _keep_wcam_alive{}; // We choose to keep the library running for the whole duration of the program.
-                                                           // But in a real application you would probably want to only have the library active if you are actively using or looking to use a camera.
-                                                           // For example in OBS you would store one wcam::KeepLibraryAlive{} in each of the webcam Sources, so that the library is only active while a webcam source is in the scene, or when the window to select which webcam to use is open
-                                                           // While the library is alive, it has a thread running in the background constantly refreshing its list of infos on which webcam are plugged in, and if webcams are currently beeing used this thread also checks to restart them if they failed (eg if the webcam was already used by another application when we tried to open it)
+    quick_imgui::AverageTime          _timer{};
+    std::optional<wcam::SharedWebcam> _webcam{};
+    wcam::MaybeImage                  _maybe_image{};
+    wcam::KeepLibraryAlive            _keep_wcam_alive{}; // We choose to keep the library running for the whole duration of the program.
+                                                          // But in a real application you would probably want to only have the library active if you are actively using or looking to use a camera.
+                                                          // For example in OBS you would store one wcam::KeepLibraryAlive{} in each of the webcam Sources, so that the library is only active while a webcam source is in the scene, or when the window to select which webcam to use is open
+                                                          // While the library is alive, it has a thread running in the background constantly refreshing its list of infos on which webcam are plugged in, and if webcams are currently beeing used this thread also checks to restart them if they failed (eg if the webcam was already used by another application when we tried to open it)
 };
 
 auto main() -> int
 {
-    wcam::set_image_type<Image>();
+    wcam::set_image_type<Image>(); // Must be called before using anything from the library
     auto windows = std::vector<WebcamWindow>(3);
-    bool is_first_frame{true};
-    quick_imgui::loop("webcam_info tests", [&]() {
-        if (is_first_frame)
-        {
-            is_first_frame = false;
-        }
-
-        ImGui::Begin("main");
+    quick_imgui::loop("wcam tests", [&]() {
+        ImGui::Begin("wcam test");
         if (ImGui::Button("Add"))
             windows.emplace_back();
         ImGui::SameLine();
         if (ImGui::Button("Remove") && !windows.empty())
             windows.pop_back();
         ImGui::End();
+
         for (size_t i = 0; i < windows.size(); ++i)
         {
             ImGui::Begin(std::to_string(i + 1).c_str());
