@@ -4,43 +4,51 @@
 #include "imgui.h"
 #include "wcam/wcam.hpp"
 
+struct Texture {
+    GLuint           id{};
+    wcam::Resolution resolution{};
+};
+
 class TexturePool { // NOLINT(*special-member-functions)
 public:
     ~TexturePool()
     {
-        glDeleteTextures(static_cast<GLsizei>(_ids.size()), _ids.data());
+        for (auto& texture : _textures)
+            glDeleteTextures(1, &texture.id);
     }
 
-    auto take() -> GLuint
+    auto take(wcam::Resolution resolution) -> Texture // We request a texture with a given resolution, to make sure we don't resize textures all the time. This can save a little bit of performance.
     {
-        if (_ids.empty())
+        auto const it = std::find_if(_textures.begin(), _textures.end(), [&](Texture const& texture) {
+            return texture.resolution == resolution;
+        });
+        if (it != _textures.end())
         {
-            GLuint id{};
-            glGenTextures(1, &id);
-            glBindTexture(GL_TEXTURE_2D, id);
-
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-            return id;
-        }
-        else // NOLINT(*else-after-return)
-        {
-            auto const res = _ids.back();
-            _ids.pop_back();
+            auto const res = *it;
+            _textures.erase(it);
             return res;
         }
+
+        auto texture       = Texture{};
+        texture.resolution = resolution;
+        glGenTextures(1, &texture.id);
+        glBindTexture(GL_TEXTURE_2D, texture.id);
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        return texture;
     }
 
-    void give_back(GLuint id)
+    void give_back(Texture texture)
     {
-        _ids.push_back(id);
+        _textures.push_back(texture);
     }
 
 private:
-    std::vector<GLuint> _ids{};
+    std::vector<Texture> _textures{};
 };
 
 auto texture_pool() -> TexturePool&
@@ -53,20 +61,18 @@ class Image : public wcam::Image { // NOLINT(*special-member-functions)
 public:
     ~Image() override
     {
-        if (_texture_id != 0)
-            texture_pool().give_back(_texture_id);
+        if (_texture.id != 0)
+            texture_pool().give_back(_texture);
     }
 
     auto imgui_texture_id() const -> ImTextureID
     {
         if (_gen_texture.has_value())
         {
-            if (_texture_id == 0)
-                _texture_id = texture_pool().take();
             (*_gen_texture)();
             _gen_texture.reset();
         }
-        return static_cast<ImTextureID>(reinterpret_cast<void*>(static_cast<uint64_t>(_texture_id))); // NOLINT(performance-no-int-to-ptr, *reinterpret-cast)
+        return static_cast<ImTextureID>(reinterpret_cast<void*>(static_cast<uint64_t>(_texture.id))); // NOLINT(performance-no-int-to-ptr, *reinterpret-cast)
     }
 
     auto width() const -> wcam::Resolution::DataType { return _resolution.width(); }
@@ -78,7 +84,9 @@ public:
         _resolution  = rgb_data.resolution();
         _row_order   = rgb_data.row_order();
         _gen_texture = [owned_rgb_data = rgb_data.to_owning(), this]() { // rgb_data will not live past this function, so we need to take a copy (which will just be a move in some cases)
-            glBindTexture(GL_TEXTURE_2D, _texture_id);
+            assert(_texture.id == 0);
+            _texture = texture_pool().take(owned_rgb_data.resolution());
+            glBindTexture(GL_TEXTURE_2D, _texture.id);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, static_cast<GLsizei>(owned_rgb_data.resolution().width()), static_cast<GLsizei>(owned_rgb_data.resolution().height()), 0, GL_RGB, GL_UNSIGNED_BYTE, owned_rgb_data.data());
         };
     }
@@ -88,13 +96,15 @@ public:
         _resolution  = bgr_data.resolution();
         _row_order   = bgr_data.row_order();
         _gen_texture = [owned_bgr_data = bgr_data.to_owning(), this]() { // bgr_data will not live past this function, so we need to take a copy (which will just be a move in some cases)
-            glBindTexture(GL_TEXTURE_2D, _texture_id);
+            assert(_texture.id == 0);
+            _texture = texture_pool().take(owned_bgr_data.resolution());
+            glBindTexture(GL_TEXTURE_2D, _texture.id);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, static_cast<GLsizei>(owned_bgr_data.resolution().width()), static_cast<GLsizei>(owned_bgr_data.resolution().height()), 0, GL_BGR, GL_UNSIGNED_BYTE, owned_bgr_data.data());
         };
     }
 
 private:
-    mutable GLuint                               _texture_id{0};
+    mutable Texture                              _texture{};
     mutable std::optional<std::function<void()>> _gen_texture{}; // Since OpenGL calls must happen on the main thread, when set_data is called (from another thread) we just store the thing to do in this function, and call it later, on the main thread
     wcam::Resolution                             _resolution{};
     wcam::FirstRowIs                             _row_order{};
