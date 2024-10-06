@@ -131,7 +131,9 @@ public:
     }
     ~VariantRAII()
     {
-        assert(VariantClear(&_variant) == S_OK);
+        auto const hr = VariantClear(&_variant);
+        assert(hr == S_OK);
+        std::ignore = hr; // Silence warning in Release
     }
     VariantRAII(VariantRAII const&)                = delete;
     VariantRAII& operator=(VariantRAII const&)     = delete;
