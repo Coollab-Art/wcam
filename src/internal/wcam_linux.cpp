@@ -10,10 +10,12 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <iostream>
 #include <vector>
 #include "../Info.hpp"
 #include "ICaptureImpl.hpp"
+#include "ImageFactory.hpp"
 #include "make_device_id.hpp"
 
 namespace wcam::internal {
@@ -131,6 +133,7 @@ auto grab_all_infos_impl() -> std::vector<Info>
 
 CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
     : _resolution{resolution}
+    , _thread{&CaptureImpl::thread_job, std::ref(*this)}
 {
     fd = open(id.as_string().c_str(), O_RDWR);
     if (fd == -1)
@@ -213,6 +216,9 @@ CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
 
 CaptureImpl::~CaptureImpl()
 {
+    _wants_to_stop_thread.store(true);
+    _thread.join();
+
     enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     if (ioctl(fd, VIDIOC_STREAMOFF, &type) == -1)
     {
@@ -231,18 +237,17 @@ CaptureImpl::~CaptureImpl()
     }
 }
 
-auto CaptureImpl::image() -> MaybeImage
+void CaptureImpl::thread_job(CaptureImpl& This)
 {
-    auto* bob = getFrame();
-    // assert(bob.size() == _resolution.pixels_count() * 3);
-    return std::make_shared<img::Image>(_resolution, img::PixelFormat::RGB, img::FirstRowIs::Bottom, bob);
-    // std::lock_guard lock{_mutex};
+    using namespace std::chrono_literals;
 
-    // auto res = std::move(_image);
-    // if (std::holds_alternative<img::Image>(res))
-    //     _image = NoNewImageAvailableYet{}; // Make sure we know that the current image has been consumed
-
-    // return res; // We don't use std::move here because it would prevent copy elision
+    std::this_thread::sleep_for(2000ms);
+    while (!This._wants_to_stop_thread.load())
+    {
+        auto image = image_factory().make_image();
+        image->set_data(ImageDataView<RGB24>{This.getFrame(), static_cast<size_t>(This._resolution.pixels_count() * 3), This._resolution, wcam::FirstRowIs::Bottom});
+        This.set_image(std::move(image));
+    }
 }
 
 auto CaptureImpl::getFrame() -> uint8_t*
