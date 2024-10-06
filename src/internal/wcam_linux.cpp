@@ -251,7 +251,7 @@ void CaptureImpl::thread_job(CaptureImpl& This)
     while (!This._wants_to_stop_thread.load())
     {
         auto image = image_factory().make_image();
-        image->set_data(ImageDataView<RGB24>{This._bob.getFrame(), static_cast<size_t>(This._bob._resolution.pixels_count() * 3), This._bob._resolution, wcam::FirstRowIs::Bottom});
+        image->set_data(ImageDataView<RGB24>{This._bob.getFrame(), static_cast<size_t>(This._bob._resolution.pixels_count() * 3), This._bob._resolution, wcam::FirstRowIs::Top});
         This.set_image(std::move(image));
     }
 }
