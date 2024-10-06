@@ -106,7 +106,13 @@ public:
     {
         _timer.imgui_plot();
         _timer.start();
+        imgui_select_webcam();
+        imgui_show_open_webcam();
+        _timer.stop();
+    }
 
+    void imgui_select_webcam()
+    {
         auto const webcam_infos = wcam::all_webcams_info();
         int        imgui_id{0};
         for (auto const& info : webcam_infos)
@@ -134,35 +140,37 @@ public:
                 _webcam = wcam::open_webcam(info.id);
             ImGui::PopID();
         }
-        if (_webcam.has_value())
-        {
-            _maybe_image = _webcam->image(); // We need to keep the image alive till the end of the frame, so we take a copy of the shared_ptr. The image stored in the _webcam can be destroyed at any time if a new image is created by the background thread
-            std::visit(
-                wcam::overloaded{
-                    [&](wcam::ImageNotInitYet) {
-                        ImGui::TextUnformatted("LOADING");
-                    },
-                    [&](std::shared_ptr<wcam::Image const> const& image) {
-                        auto const& im     = *static_cast<Image const*>(image.get()); // NOLINT(*static-cast-downcast)
-                        bool const  flip_y = im.row_order() == wcam::FirstRowIs::Bottom;
+    }
 
-                        auto const w = ImGui::GetContentRegionAvail().x;
-                        ImGui::Image(im.imgui_texture_id(), ImVec2{w, w / static_cast<float>(im.width()) * static_cast<float>(im.height())}, flip_y ? ImVec2(0., 1.) : ImVec2(0., 0.), flip_y ? ImVec2(1., 0.) : ImVec2(1., 1.));
-                        ImGui::Text("%d x %d", im.width(), im.height());
-                    },
-                    [&](wcam::CaptureError const& error) {
-                        ImGui::Text("ERROR: %s", wcam::to_string(error).c_str());
-                    }
+    void imgui_show_open_webcam()
+    {
+        if (!_webcam.has_value())
+            return;
+        _maybe_image = _webcam->image(); // We need to keep the image alive till the end of the frame, so we take a copy of the shared_ptr. The image stored in the _webcam can be destroyed at any time if a new image is created by the background thread
+        std::visit(
+            wcam::overloaded{
+                [&](wcam::ImageNotInitYet) {
+                    ImGui::TextUnformatted("LOADING");
                 },
-                _maybe_image
-            );
-            if (ImGui::Button("Close Webcam"))
-            {
-                _webcam      = std::nullopt;
-                _maybe_image = wcam::ImageNotInitYet{};
-            }
+                [&](std::shared_ptr<wcam::Image const> const& image) {
+                    auto const& im     = *static_cast<Image const*>(image.get()); // NOLINT(*static-cast-downcast)
+                    bool const  flip_y = im.row_order() == wcam::FirstRowIs::Bottom;
+
+                    auto const w = ImGui::GetContentRegionAvail().x;
+                    ImGui::Image(im.imgui_texture_id(), ImVec2{w, w / static_cast<float>(im.width()) * static_cast<float>(im.height())}, flip_y ? ImVec2(0., 1.) : ImVec2(0., 0.), flip_y ? ImVec2(1., 0.) : ImVec2(1., 1.));
+                    ImGui::Text("%d x %d", im.width(), im.height());
+                },
+                [&](wcam::CaptureError const& error) {
+                    ImGui::Text("ERROR: %s", wcam::to_string(error).c_str());
+                }
+            },
+            _maybe_image
+        );
+        if (ImGui::Button("Close Webcam"))
+        {
+            _webcam      = std::nullopt;
+            _maybe_image = wcam::ImageNotInitYet{};
         }
-        _timer.stop();
     }
 
 private:
