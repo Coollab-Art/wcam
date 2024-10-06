@@ -315,6 +315,7 @@ static auto get_actual_resolution(ISampleGrabber* sample_grabber, GUID video_for
         (video_format == MEDIASUBTYPE_RGB24 && video_info->bmiHeader.biSizeImage == resolution.pixels_count() * 3)
         || (video_format == MEDIASUBTYPE_NV12 && video_info->bmiHeader.biSizeImage == resolution.pixels_count() * 3 / 2)
     );
+    std::ignore = video_format; // Silence warning in release
     return resolution;
 }
 
