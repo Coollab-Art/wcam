@@ -403,40 +403,43 @@ CaptureImpl::~CaptureImpl()
     _media_control->Release();
 }
 
-static auto get_video_parameters(IBaseFilter* pCaptureFilter) -> std::vector<Resolution>
+static auto get_resolutions(IBaseFilter* capture_filter) -> std::vector<Resolution>
 {
-    auto available_resolutions = std::vector<Resolution>{};
+    auto resolutions = std::vector<Resolution>{};
 
-    auto pEnumPins = AutoRelease<IEnumPins>{};
-    THROW_IF_ERR(pCaptureFilter->EnumPins(&pEnumPins));
+    auto pins_enumerator = AutoRelease<IEnumPins>{};
+    THROW_IF_ERR(capture_filter->EnumPins(&pins_enumerator));
     while (true)
     {
-        auto pPin = AutoRelease<IPin>{}; // Declare pPin inside the loop so that it is freed at the end, Next doesn't Release the pin that you pass
-        if (pEnumPins->Next(1, &pPin, nullptr) != S_OK)
+        auto pin = AutoRelease<IPin>{}; // Declare pin inside the loop so that it is freed at the end, Next doesn't Release the pin that you pass
+        if (pins_enumerator->Next(1, &pin, nullptr) != S_OK)
             break;
-        PIN_DIRECTION pinDirection; // NOLINT(*-init-variables)
-        pPin->QueryDirection(&pinDirection);
 
-        if (pinDirection != PINDIR_OUTPUT)
+        PIN_DIRECTION pin_direction; // NOLINT(*-init-variables)
+        pin->QueryDirection(&pin_direction);
+        if (pin_direction != PINDIR_OUTPUT)
             continue;
-        AutoRelease<IAMStreamConfig> pStreamConfig; // NOLINT(*-init-variables)
-        THROW_IF_ERR(pPin->QueryInterface(IID_PPV_ARGS(&pStreamConfig)));
-        int iCount; // NOLINT(*-init-variables)
-        int iSize;  // NOLINT(*-init-variables)
-        THROW_IF_ERR(pStreamConfig->GetNumberOfCapabilities(&iCount, &iSize));
+
+        auto stream_config = AutoRelease<IAMStreamConfig>{};
+        THROW_IF_ERR(pin->QueryInterface(IID_PPV_ARGS(&stream_config)));
+        int count, size; // NOLINT(*-init-variables, *isolate-declaration)
+        THROW_IF_ERR(stream_config->GetNumberOfCapabilities(&count, &size));
         VIDEO_STREAM_CONFIG_CAPS caps;
-        for (int i = 0; i < iCount; i++)
+        for (int i = 0; i < count; i++)
         {
-            AM_MEDIA_TYPE* pmtConfig;                                                                  // NOLINT(*-init-variables)
-            THROW_IF_ERR(pStreamConfig->GetStreamCaps(i, &pmtConfig, reinterpret_cast<BYTE*>(&caps))); // NOLINT(*-pro-type-reinterpret-cast)
-            if (pmtConfig->formattype != FORMAT_VideoInfo)
+            auto media_type = MediaTypeRAII{};
+            THROW_IF_ERR(stream_config->GetStreamCaps(i, &media_type, reinterpret_cast<BYTE*>(&caps))); // NOLINT(*-pro-type-reinterpret-cast)
+            if (media_type->formattype != FORMAT_VideoInfo)
                 continue;
-            auto* pVih = reinterpret_cast<VIDEOINFOHEADER*>(pmtConfig->pbFormat); // NOLINT(*-pro-type-reinterpret-cast)
-            available_resolutions.push_back({static_cast<Resolution::DataType>(pVih->bmiHeader.biWidth), static_cast<Resolution::DataType>(pVih->bmiHeader.biHeight)});
+            auto* const video_info = reinterpret_cast<VIDEOINFOHEADER*>(media_type->pbFormat); // NOLINT(*-pro-type-reinterpret-cast)
+            resolutions.emplace_back(
+                static_cast<Resolution::DataType>(video_info->bmiHeader.biWidth),
+                static_cast<Resolution::DataType>(video_info->bmiHeader.biHeight)
+            );
         }
     }
 
-    return available_resolutions;
+    return resolutions;
 }
 
 auto grab_all_infos_impl() -> std::vector<Info>
@@ -458,19 +461,19 @@ auto grab_all_infos_impl() -> std::vector<Info>
         if (enumerator->Next(1, &moniker, nullptr) != S_OK)
             break;
 
-        auto const webcam_id             = get_webcam_id(moniker);
-        auto const available_resolutions = [&]() {
+        auto const webcam_id   = get_webcam_id(moniker);
+        auto const resolutions = [&]() -> std::vector<Resolution> {
             auto const it = resolutions_cache.find(webcam_id);
             if (it != resolutions_cache.end())
                 return it->second;
 
-            auto pCaptureFilter = AutoRelease<IBaseFilter>{};
-            THROW_IF_ERR(moniker->BindToObject(nullptr, nullptr, IID_PPV_ARGS(&pCaptureFilter)));
-            return resolutions_cache.insert(std::make_pair(webcam_id, get_video_parameters(pCaptureFilter))).first->second;
+            auto capture_filter = AutoRelease<IBaseFilter>{};
+            THROW_IF_ERR(moniker->BindToObject(nullptr, nullptr, IID_PPV_ARGS(&capture_filter)));
+            return resolutions_cache.insert(std::make_pair(webcam_id, get_resolutions(capture_filter))).first->second;
         }();
 
-        if (!available_resolutions.empty())
-            infos.push_back({get_webcam_name(moniker), webcam_id, available_resolutions});
+        if (!resolutions.empty())
+            infos.push_back({get_webcam_name(moniker), webcam_id, resolutions});
     }
 
     return infos;
