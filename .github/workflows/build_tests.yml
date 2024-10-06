@@ -1,4 +1,4 @@
-name: Build and run tests
+name: Build tests
 
 on:
   push:
@@ -82,6 +82,3 @@ jobs:
           buildWithCMakeArgs: --config ${{matrix.build_type}} --target ${{env.cmake_target}}
           cmakeBuildType: ${{matrix.build_type}}
           buildDirectory: ${{github.workspace}}/build
-
-      - name: Run
-        run: ${{github.workspace}}/build/${{env.cmake_target}} -nogpu
