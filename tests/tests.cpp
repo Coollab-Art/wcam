@@ -148,10 +148,6 @@ public:
                         error_msg  = wcam::to_string(error);
                         is_loading = false;
                     },
-                    [&](wcam::NoNewImageAvailableYet) {
-                        error_msg  = "";
-                        is_loading = false;
-                    },
                     [&](wcam::ImageNotInitYet) {
                         image      = nullptr; // Reset the image, otherwise we would show the image from the previous capture while the new capture hasn't returned any image yet
                         error_msg  = "";

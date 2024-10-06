@@ -112,6 +112,13 @@ public:
         return &_ptr;
     }
 
+    auto move() -> T*
+    {
+        T* res = _ptr;
+        _ptr   = nullptr;
+        return res;
+    }
+
 private:
     T* _ptr{nullptr};
 };
@@ -234,12 +241,17 @@ static auto find_moniker(DeviceId const& device_id) -> IMoniker*
     auto dev_enum   = AutoRelease<ICreateDevEnum>{CLSID_SystemDeviceEnum};
     auto enumerator = AutoRelease<IEnumMoniker>{};
     THROW_IF_ERR(dev_enum->CreateClassEnumerator(CLSID_VideoInputDeviceCategory, &enumerator, 0));
+    if (enumerator == nullptr) // Might still be nullptr after CreateClassEnumerator if the VideoInputDevice category is empty or missing (https://learn.microsoft.com/en-us/previous-versions/ms784969(v=vs.85))
+        throw CaptureException{Error_WebcamUnplugged{}};
 
-    IMoniker* moniker{};
-    while (enumerator->Next(1, &moniker, nullptr) == S_OK)
+    while (true) // while(true) because we want to declare the moniker inside the loop so that it gets destroyed properly during each iteration of the loop
     {
+        auto moniker = AutoRelease<IMoniker>{};
+        if (enumerator->Next(1, &moniker, nullptr) != S_OK)
+            break;
+
         if (get_webcam_id(moniker) == device_id)
-            return moniker;
+            return moniker.move(); // move() to make sure it's not destroyed automatically at the end of this function
     }
     throw CaptureException{Error_WebcamUnplugged{}}; // Webcam not found
 }
@@ -431,48 +443,34 @@ auto grab_all_infos_impl() -> std::vector<Info>
 {
     CoInitializeIFN();
 
-    auto pDevEnum = AutoRelease<ICreateDevEnum>{CLSID_SystemDeviceEnum};
-    auto pEnum    = AutoRelease<IEnumMoniker>{};
-    THROW_IF_ERR(pDevEnum->CreateClassEnumerator(CLSID_VideoInputDeviceCategory, &pEnum, 0));
-    if (pEnum == nullptr) // Might still be nullptr after CreateClassEnumerator if the VideoInputDevice category is empty or missing (https://learn.microsoft.com/en-us/previous-versions/ms784969(v=vs.85))
+    auto dev_enum   = AutoRelease<ICreateDevEnum>{CLSID_SystemDeviceEnum};
+    auto enumerator = AutoRelease<IEnumMoniker>{};
+    THROW_IF_ERR(dev_enum->CreateClassEnumerator(CLSID_VideoInputDeviceCategory, &enumerator, 0));
+    if (enumerator == nullptr) // Might still be nullptr after CreateClassEnumerator if the VideoInputDevice category is empty or missing (https://learn.microsoft.com/en-us/previous-versions/ms784969(v=vs.85))
         return {};
 
-    thread_local auto resolutions_cache = std::unordered_map<std::string, std::vector<Resolution>>{}; // This cache limits the number of times we will allocate IBaseFilter which seems to leak because of a Windows bug.
+    thread_local auto resolutions_cache = std::unordered_map<DeviceId, std::vector<Resolution>>{}; // This cache limits the number of times we will allocate IBaseFilter which seems to leak because of a Windows bug.
 
     auto infos = std::vector<Info>{};
-
-    while (true)
+    while (true) // while(true) because we want to declare the moniker inside the loop so that it gets destroyed properly during each iteration of the loop
     {
-        auto pMoniker = AutoRelease<IMoniker>{};
-        if (pEnum->Next(1, &pMoniker, nullptr) != S_OK)
+        auto moniker = AutoRelease<IMoniker>{};
+        if (enumerator->Next(1, &moniker, nullptr) != S_OK)
             break;
 
-        // }
-        // if (SUCCEEDED(hr))
-        {
-            auto       available_resolutions = std::vector<Resolution>{};
-            auto const webcam_name           = get_webcam_name(pMoniker);
-            auto const it                    = resolutions_cache.find(webcam_name);
+        auto const webcam_id             = get_webcam_id(moniker);
+        auto const available_resolutions = [&]() {
+            auto const it = resolutions_cache.find(webcam_id);
             if (it != resolutions_cache.end())
-            {
-                available_resolutions = it->second;
-            }
-            else
-            {
-                auto pCaptureFilter = AutoRelease<IBaseFilter>{};
-                THROW_IF_ERR(pMoniker->BindToObject(nullptr, nullptr, IID_PPV_ARGS(&pCaptureFilter)));
-                available_resolutions          = get_video_parameters(pCaptureFilter);
-                resolutions_cache[webcam_name] = available_resolutions;
-            }
-            if (!available_resolutions.empty())
-            {
-                infos.push_back({webcam_name, get_webcam_id(pMoniker), available_resolutions});
-            }
-        }
-        // else
-        // {
-        //     throw 0;
-        // }
+                return it->second;
+
+            auto pCaptureFilter = AutoRelease<IBaseFilter>{};
+            THROW_IF_ERR(moniker->BindToObject(nullptr, nullptr, IID_PPV_ARGS(&pCaptureFilter)));
+            return resolutions_cache.insert(std::make_pair(webcam_id, get_video_parameters(pCaptureFilter))).first->second;
+        }();
+
+        if (!available_resolutions.empty())
+            infos.push_back({get_webcam_name(moniker), webcam_id, available_resolutions});
     }
 
     return infos;
