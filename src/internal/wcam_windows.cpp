@@ -16,16 +16,21 @@
 /// Apparently Windows 11 adds this capability (https://medium.com/deelvin-machine-learning/how-does-obs-virtual-camera-plugin-work-on-windows-e92ab8986c4e)
 /// So in a very distant future, when Windows 11 is on 99.999% of the machines, and when OBS implements a MediaFoundation backend and a virtual camera for it, then we can switch to MediaFoundation
 
+#if defined(GCC) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wlanguage-extension-token"
+#endif
+
 namespace wcam::internal {
 
 static auto convert_wstr_to_str(BSTR const& wstr) -> std::string
 {
-    int const wstr_len = static_cast<int>(SysStringLen(wstr));
-    int const res_len  = WideCharToMultiByte(CP_UTF8, 0, wstr, wstr_len, nullptr, 0, nullptr, nullptr);
+    auto const wstr_len = static_cast<int>(SysStringLen(wstr));
+    auto const res_len  = WideCharToMultiByte(CP_UTF8, 0, wstr, wstr_len, nullptr, 0, nullptr, nullptr);
     if (res_len == 0)
         return "";
 
-    auto res = std::string(res_len, 0);
+    auto res = std::string(static_cast<size_t>(res_len), 0);
     WideCharToMultiByte(CP_UTF8, 0, wstr, wstr_len, res.data(), res_len, nullptr, nullptr);
     return res;
 }
@@ -386,11 +391,6 @@ CaptureImpl::~CaptureImpl()
     _media_control->Release();
 }
 
-// #if defined(GCC) || defined(__clang__)
-// #pragma GCC diagnostic push
-// #pragma GCC diagnostic ignored "-Wlanguage-extension-token"
-// #endif
-
 static auto get_video_parameters(IBaseFilter* pCaptureFilter) -> std::vector<Resolution>
 {
     auto available_resolutions = std::vector<Resolution>{};
@@ -480,8 +480,8 @@ auto grab_all_infos_impl() -> std::vector<Info>
 
 } // namespace wcam::internal
 
-// #if defined(__GNUC__) || defined(__clang__)
-// #pragma GCC diagnostic pop
-// #endif
+#if defined(GCC) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 #endif

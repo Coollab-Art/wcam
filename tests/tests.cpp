@@ -1,3 +1,4 @@
+#include <optional>
 #include <quick_imgui/quick_imgui.hpp>
 #include "glad/glad.h"
 #include "imgui.h"
