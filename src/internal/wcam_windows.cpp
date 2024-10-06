@@ -392,7 +392,8 @@ STDMETHODIMP CaptureImpl::BufferCB(double /* time */, BYTE* buffer, long buffer_
     }
     else
     {
-        assert(false && "Unsupported pixel format! Please contact the library authors to ask them to add this format.");
+        ICaptureImpl::set_image(Error_Unknown{"Unsupported pixel format"});
+        return S_OK;
     }
 
     ICaptureImpl::set_image(std::move(image));
