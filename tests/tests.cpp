@@ -114,11 +114,10 @@ public:
     void imgui_select_webcam()
     {
         auto const webcam_infos = wcam::all_webcams_info();
-        int        imgui_id{0};
         for (auto const& info : webcam_infos)
         {
+            ImGui::PushID(info.id.as_string().c_str());
             ImGui::NewLine();
-            ImGui::PushID(imgui_id++);
 
             ImGui::SeparatorText((info.name + " (ID: " + info.id.as_string() + ")").c_str());
             auto const selected_resolution = wcam::get_selected_resolution(info.id);
@@ -138,6 +137,7 @@ public:
 
             if (ImGui::Button("Open webcam"))
                 _webcam = wcam::open_webcam(info.id);
+
             ImGui::PopID();
         }
     }
@@ -146,6 +146,7 @@ public:
     {
         if (!_webcam.has_value())
             return;
+
         _maybe_image = _webcam->image(); // We need to keep the image alive till the end of the frame, so we take a copy of the shared_ptr. The image stored in the _webcam can be destroyed at any time if a new image is created by the background thread
         std::visit(
             wcam::overloaded{
@@ -153,12 +154,12 @@ public:
                     ImGui::TextUnformatted("LOADING");
                 },
                 [&](std::shared_ptr<wcam::Image const> const& image) {
-                    auto const& im     = *static_cast<Image const*>(image.get()); // NOLINT(*static-cast-downcast)
-                    bool const  flip_y = im.row_order() == wcam::FirstRowIs::Bottom;
+                    auto const& img    = *static_cast<Image const*>(image.get()); // NOLINT(*static-cast-downcast)
+                    bool const  flip_y = img.row_order() == wcam::FirstRowIs::Bottom;
 
                     auto const w = ImGui::GetContentRegionAvail().x;
-                    ImGui::Image(im.imgui_texture_id(), ImVec2{w, w / static_cast<float>(im.width()) * static_cast<float>(im.height())}, flip_y ? ImVec2(0., 1.) : ImVec2(0., 0.), flip_y ? ImVec2(1., 0.) : ImVec2(1., 1.));
-                    ImGui::Text("%d x %d", im.width(), im.height());
+                    ImGui::Image(img.imgui_texture_id(), ImVec2{w, w / static_cast<float>(img.width()) * static_cast<float>(img.height())}, flip_y ? ImVec2(0., 1.) : ImVec2(0., 0.), flip_y ? ImVec2(1., 0.) : ImVec2(1., 1.));
+                    ImGui::Text("%d x %d", img.width(), img.height());
                 },
                 [&](wcam::CaptureError const& error) {
                     ImGui::Text("ERROR: %s", wcam::to_string(error).c_str());
@@ -169,7 +170,7 @@ public:
         if (ImGui::Button("Close Webcam"))
         {
             _webcam      = std::nullopt;
-            _maybe_image = wcam::ImageNotInitYet{};
+            _maybe_image = wcam::ImageNotInitYet{}; // Make sure we don't keep the shared_ptr alive for no reason
         }
     }
 
