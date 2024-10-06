@@ -131,9 +131,8 @@ auto grab_all_infos_impl() -> std::vector<Info>
     return list_webcam_info;
 }
 
-CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
+Bob::Bob(DeviceId const& id, Resolution const& resolution)
     : _resolution{resolution}
-    , _thread{&CaptureImpl::thread_job, std::ref(*this)}
 {
     fd = open(id.as_string().c_str(), O_RDWR);
     if (fd == -1)
@@ -158,7 +157,8 @@ CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
 
     if (ioctl(fd, VIDIOC_S_FMT, &fmt) == -1)
     {
-        perror("Failed to set format");
+        // perror("Failed to set format");
+        throw CaptureException{Error_WebcamAlreadyUsedInAnotherApplication{}}; // TODO cleaner
     }
 
     struct v4l2_requestbuffers req;
@@ -214,11 +214,8 @@ CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
     }
 }
 
-CaptureImpl::~CaptureImpl()
+Bob::~Bob()
 {
-    _wants_to_stop_thread.store(true);
-    _thread.join();
-
     enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     if (ioctl(fd, VIDIOC_STREAMOFF, &type) == -1)
     {
@@ -237,20 +234,29 @@ CaptureImpl::~CaptureImpl()
     }
 }
 
+CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
+    : _bob{id, resolution}
+    , _thread{&CaptureImpl::thread_job, std::ref(*this)}
+{
+}
+
+CaptureImpl::~CaptureImpl()
+{
+    _wants_to_stop_thread.store(true);
+    _thread.join();
+}
+
 void CaptureImpl::thread_job(CaptureImpl& This)
 {
-    using namespace std::chrono_literals;
-
-    std::this_thread::sleep_for(2000ms);
     while (!This._wants_to_stop_thread.load())
     {
         auto image = image_factory().make_image();
-        image->set_data(ImageDataView<RGB24>{This.getFrame(), static_cast<size_t>(This._resolution.pixels_count() * 3), This._resolution, wcam::FirstRowIs::Bottom});
+        image->set_data(ImageDataView<RGB24>{This._bob.getFrame(), static_cast<size_t>(This._bob._resolution.pixels_count() * 3), This._bob._resolution, wcam::FirstRowIs::Bottom});
         This.set_image(std::move(image));
     }
 }
 
-auto CaptureImpl::getFrame() -> uint8_t*
+auto Bob::getFrame() -> uint8_t*
 {
     struct v4l2_buffer buf;
     memset(&buf, 0, sizeof(buf));
