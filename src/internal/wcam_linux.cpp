@@ -256,9 +256,9 @@ CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
             perror("Failed to query buffer");
         }
 
-        buffers[i].length = buf.length;
-        buffers[i].start  = mmap(NULL, buf.length, PROT_READ | PROT_WRITE, MAP_SHARED, fd, buf.m.offset);
-        if (buffers[i].start == MAP_FAILED)
+        buffers[i].size = buf.length;
+        buffers[i].ptr  = mmap(NULL, buf.length, PROT_READ | PROT_WRITE, MAP_SHARED, fd, buf.m.offset);
+        if (buffers[i].ptr == MAP_FAILED)
         {
             perror("Failed to map buffer");
         }
@@ -298,7 +298,7 @@ CaptureImpl::~CaptureImpl()
     }
     for (size_t i = 0; i < buffers.size(); ++i)
     {
-        if (munmap(buffers[i].start, buffers[i].length) == -1)
+        if (munmap(buffers[i].ptr, buffers[i].size) == -1)
         {
             perror("Failed to unmap buffer");
         }
@@ -348,9 +348,9 @@ auto CaptureImpl::getFrame() -> std::shared_ptr<uint8_t>
     }
     uint8_t* rgb_data = new uint8_t[_resolution.pixels_count() * 3];
     if (_pixels_format == V4L2_PIX_FMT_YUYV)
-        yuyv_to_rgb((unsigned char*)buffers[0].start, rgb_data, _resolution.width(), _resolution.height());
+        yuyv_to_rgb((unsigned char*)buffers[0].ptr, rgb_data, _resolution.width(), _resolution.height());
     else if (_pixels_format == V4L2_PIX_FMT_MJPEG)
-        mjpeg_to_rgb((unsigned char*)buffers[0].start, buffers[0].length, rgb_data);
+        mjpeg_to_rgb((unsigned char*)buffers[0].ptr, buffers[0].size, rgb_data);
     else
     {
         assert(false);

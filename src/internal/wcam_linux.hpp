@@ -9,14 +9,18 @@
 namespace wcam::internal {
 
 struct Buffer {
-    void*  start;
-    size_t length;
+    void*  ptr;
+    size_t size;
 };
 
 class CaptureImpl : public ICaptureImpl {
 public:
     CaptureImpl(DeviceId const& id, Resolution const& resolution);
     ~CaptureImpl() override;
+    CaptureImpl(CaptureImpl const&)                        = delete;
+    auto operator=(CaptureImpl const&) -> CaptureImpl&     = delete;
+    CaptureImpl(CaptureImpl&&) noexcept                    = delete;
+    auto operator=(CaptureImpl&&) noexcept -> CaptureImpl& = delete;
 
 private:
     auto        getFrame() -> std::shared_ptr<uint8_t>;
