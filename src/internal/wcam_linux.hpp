@@ -23,6 +23,7 @@ public:
 private:
     int                 fd{-1};
     std::vector<Buffer> buffers;
+    uint32_t            _pixels_format;
 };
 
 class CaptureImpl : public ICaptureImpl {

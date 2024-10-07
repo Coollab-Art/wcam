@@ -165,6 +165,47 @@ auto grab_all_infos_impl() -> std::vector<Info>
     return list_webcam_info;
 }
 
+static auto is_supported_format(uint32_t format) -> bool
+{
+    return format == V4L2_PIX_FMT_MJPEG
+           || format == V4L2_PIX_FMT_YUYV;
+}
+
+auto select_pixel_format(int fd, int width, int height) -> uint32_t
+{
+    struct v4l2_fmtdesc     fmt;
+    struct v4l2_frmsizeenum frmsize;
+    memset(&fmt, 0, sizeof(fmt));
+    fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+
+    // Enumerate pixel formats
+    for (fmt.index = 0; ioctl(fd, VIDIOC_ENUM_FMT, &fmt) == 0; fmt.index++)
+    {
+        memset(&frmsize, 0, sizeof(frmsize));
+        frmsize.pixel_format = fmt.pixelformat;
+
+        // Enumerate frame sizes for this pixel format
+        for (frmsize.index = 0; ioctl(fd, VIDIOC_ENUM_FRAMESIZES, &frmsize) == 0; frmsize.index++)
+        {
+            if (frmsize.type == V4L2_FRMSIZE_TYPE_DISCRETE)
+            {
+                if (frmsize.discrete.width == width && frmsize.discrete.height == height && is_supported_format(fmt.pixelformat))
+                {
+                    return fmt.pixelformat;
+                }
+            }
+            // else if (frmsize.type == V4L2_FRMSIZE_TYPE_STEPWISE)
+            // {
+            //     if (frmsize.stepwise.min_width <= width && frmsize.stepwise.max_width >= width && frmsize.stepwise.min_height <= height && frmsize.stepwise.max_height >= height)
+            //     {
+            //         printf("  - Pixel format: %s (0x%08x)\n", fmt.description, fmt.pixelformat);
+            //     }
+            // }
+        }
+    }
+    throw CaptureException{Error_Unknown{"Unsupported pixel format"}};
+}
+
 Bob::Bob(DeviceId const& id, Resolution const& resolution)
     : _resolution{resolution}
 {
@@ -174,19 +215,14 @@ Bob::Bob(DeviceId const& id, Resolution const& resolution)
         perror("Failed to open device");
         exit(EXIT_FAILURE);
     }
-    struct v4l2_capability cap;
-    if (ioctl(fd, VIDIOC_QUERYCAP, &cap) == -1)
-    {
-        perror("Failed to query capabilities");
-        exit(EXIT_FAILURE);
-    }
+    _pixels_format = select_pixel_format(fd, resolution.width(), resolution.height());
 
     struct v4l2_format fmt;
     memset(&fmt, 0, sizeof(fmt));
     fmt.type                = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     fmt.fmt.pix.width       = _resolution.width();
     fmt.fmt.pix.height      = _resolution.height();
-    fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_MJPEG; // TODO query which formats are possible (and which is the preferred one?)
+    fmt.fmt.pix.pixelformat = _pixels_format;
     fmt.fmt.pix.field       = V4L2_FIELD_NONE;
 
     if (ioctl(fd, VIDIOC_S_FMT, &fmt) == -1)
@@ -317,9 +353,14 @@ auto Bob::getFrame() -> uint8_t*
         // return false;
     }
     uint8_t* rgb_data = new uint8_t[_resolution.pixels_count() * 3];
-    // yuyv_to_rgb((unsigned char*)buffers[0].start, rgb_data, _resolution.width(), _resolution.height());
-    mjpeg_to_rgb((unsigned char*)buffers[0].start, buffers[0].length, rgb_data);
-
+    if (_pixels_format == V4L2_PIX_FMT_YUYV)
+        yuyv_to_rgb((unsigned char*)buffers[0].start, rgb_data, _resolution.width(), _resolution.height());
+    else if (_pixels_format == V4L2_PIX_FMT_MJPEG)
+        mjpeg_to_rgb((unsigned char*)buffers[0].start, buffers[0].length, rgb_data);
+    else
+    {
+        assert(false);
+    };
     if (ioctl(fd, VIDIOC_QBUF, &buf) == -1)
     {
         perror("Failed to queue buffer");
