@@ -208,7 +208,7 @@ CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
 
     struct v4l2_requestbuffers req;
     memset(&req, 0, sizeof(req));
-    req.count  = 1;
+    req.count  = 6;
     req.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     req.memory = V4L2_MEMORY_MMAP;
 
@@ -306,12 +306,12 @@ void CaptureImpl::process_next_image()
     auto image = image_factory().make_image();
 
     if (_pixels_format == V4L2_PIX_FMT_YUYV)
-        image->set_data(ImageDataView<YUYV>{(unsigned char*)buffers[0].ptr, buffers[0].size, _resolution, wcam::FirstRowIs::Top});
+        image->set_data(ImageDataView<YUYV>{(unsigned char*)buffers[buf.index].ptr, buffers[buf.index].size, _resolution, wcam::FirstRowIs::Top});
     // yuyv_to_rgb(, rgb_data, _resolution.width(), _resolution.height());
     else if (_pixels_format == V4L2_PIX_FMT_MJPEG)
     {
         uint8_t* rgb_data = new uint8_t[_resolution.pixels_count() * 3];
-        mjpeg_to_rgb((unsigned char*)buffers[0].ptr, buffers[0].size, rgb_data);
+        mjpeg_to_rgb((unsigned char*)buffers[buf.index].ptr, buffers[buf.index].size, rgb_data);
         image->set_data(ImageDataView<RGB24>{std::shared_ptr<uint8_t>{rgb_data}, _resolution.pixels_count() * 3, _resolution, wcam::FirstRowIs::Top});
     }
     else

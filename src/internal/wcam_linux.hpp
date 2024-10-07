@@ -33,7 +33,7 @@ private:
     Resolution          _resolution;
 
     std::atomic<bool> _wants_to_stop_thread{false};
-    std::thread       _thread{}; // Must be initialized last, to make sure that everything else is init when the thread starts its job and uses those other things
+    std::thread       _thread{};
 };
 
 } // namespace wcam::internal
