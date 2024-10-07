@@ -12,7 +12,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <format>
 #include <iostream>
+#include <source_location>
 #include <thread>
 #include <vector>
 #include "../Info.hpp"
@@ -24,8 +26,8 @@ namespace wcam::internal {
 
 void mjpeg_to_rgb(unsigned char* mjpeg_data, unsigned long mjpeg_size, unsigned char* rgb_data)
 {
-    struct jpeg_decompress_struct cinfo;
-    struct jpeg_error_mgr         jerr;
+    struct jpeg_decompress_struct cinfo; // NOLINT(*member-init)
+    struct jpeg_error_mgr         jerr;  // NOLINT(*member-init)
 
     cinfo.err = jpeg_std_error(&jerr);
     jpeg_create_decompress(&cinfo);
@@ -53,6 +55,25 @@ void mjpeg_to_rgb(unsigned char* mjpeg_data, unsigned long mjpeg_size, unsigned 
     jpeg_finish_decompress(&cinfo);
     jpeg_destroy_decompress(&cinfo);
 }
+std::string getErrorMessage()
+{
+    return std::string(strerror(errno));
+}
+
+static void throw_error(std::string const& err, std::string_view code_that_failed, std::source_location location = std::source_location::current())
+{
+    if (errno == 16)
+        throw CaptureException{Error_WebcamAlreadyUsedInAnotherApplication{}};
+    else
+        throw CaptureException{Error_Unknown{std::format("{}\n(During `{}`, at {}({}:{}))", err, code_that_failed, location.file_name(), location.line(), location.column())}};
+}
+
+#define THROW_IF_ERR(exp) /*NOLINT(*macro*)*/     \
+    {                                             \
+        int const err_code = exp;                 \
+        if (err_code == -1)                       \
+            throw_error(getErrorMessage(), #exp); \
+    }
 
 static auto find_available_resolutions(int const video_device) -> std::vector<Resolution>
 {
@@ -115,6 +136,8 @@ auto grab_all_infos_impl() -> std::vector<Info>
     {
         if (entry.path().string().find("video") == std::string::npos)
             continue;
+
+        // TODO check that its a file
 
         int const video_device = open(entry.path().c_str(), O_RDONLY);
         if (video_device == -1)
@@ -200,11 +223,7 @@ CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
     fmt.fmt.pix.pixelformat = _pixels_format;
     fmt.fmt.pix.field       = V4L2_FIELD_NONE;
 
-    if (ioctl(_webcam_handle, VIDIOC_S_FMT, &fmt) == -1)
-    {
-        // perror("Failed to set format");
-        throw CaptureException{Error_WebcamAlreadyUsedInAnotherApplication{}}; // TODO cleaner
-    }
+    THROW_IF_ERR(ioctl(_webcam_handle, VIDIOC_S_FMT, &fmt));
 
     struct v4l2_requestbuffers req;
     memset(&req, 0, sizeof(req));
@@ -212,10 +231,7 @@ CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
     req.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     req.memory = V4L2_MEMORY_MMAP;
 
-    if (ioctl(_webcam_handle, VIDIOC_REQBUFS, &req) == -1)
-    {
-        perror("Failed to request buffers");
-    }
+    THROW_IF_ERR(ioctl(_webcam_handle, VIDIOC_REQBUFS, &req));
 
     buffers.resize(req.count);
     for (size_t i = 0; i < req.count; ++i)
@@ -226,10 +242,7 @@ CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
         buf.memory = V4L2_MEMORY_MMAP;
         buf.index  = i;
 
-        if (ioctl(_webcam_handle, VIDIOC_QUERYBUF, &buf) == -1)
-        {
-            perror("Failed to query buffer");
-        }
+        THROW_IF_ERR(ioctl(_webcam_handle, VIDIOC_QUERYBUF, &buf));
 
         buffers[i].size = buf.length;
         buffers[i].ptr  = mmap(NULL, buf.length, PROT_READ | PROT_WRITE, MAP_SHARED, _webcam_handle, buf.m.offset);
@@ -246,17 +259,11 @@ CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
         buf.memory = V4L2_MEMORY_MMAP;
         buf.index  = i;
 
-        if (ioctl(_webcam_handle, VIDIOC_QBUF, &buf) == -1)
-        {
-            perror("Failed to queue buffer");
-        }
+        THROW_IF_ERR(ioctl(_webcam_handle, VIDIOC_QBUF, &buf));
     }
 
     enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    if (ioctl(_webcam_handle, VIDIOC_STREAMON, &type) == -1)
-    {
-        perror("Failed to start capture");
-    }
+    THROW_IF_ERR(ioctl(_webcam_handle, VIDIOC_STREAMON, &type));
 
     _thread = std::thread{&CaptureImpl::thread_job, std::ref(*this)};
 }

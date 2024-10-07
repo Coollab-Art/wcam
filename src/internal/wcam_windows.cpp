@@ -59,19 +59,19 @@ static void throw_error(HRESULT hr, std::string_view code_that_failed, std::sour
 
 #define THROW_IF_ERR(exp) /*NOLINT(*macro*)*/ \
     {                                         \
-        HRESULT hresult = exp;                \
+        HRESULT const hresult = exp;          \
         if (FAILED(hresult))                  \
             throw_error(hresult, #exp);       \
     }
 #define THROW_IF_ERR2(exp, location) /*NOLINT(*macro*)*/ \
     {                                                    \
-        HRESULT hresult = exp;                           \
+        HRESULT const hresult = exp;                     \
         if (FAILED(hresult))                             \
             throw_error(hresult, #exp, location);        \
     }
 #define ASSERT_AND_RETURN_IF_ERR(exp, default_value) /*NOLINT(*macro*)*/ \
     {                                                                    \
-        HRESULT hresult = exp;                                           \
+        HRESULT const hresult = exp;                                     \
         if (FAILED(hresult))                                             \
         {                                                                \
             assert(false);                                               \
