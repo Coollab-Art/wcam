@@ -27,7 +27,7 @@ private:
     void        process_next_image();
 
 private:
-    int                 fd{-1};
+    int                 _webcam_handle{};
     std::vector<Buffer> buffers;
     uint32_t            _pixels_format;
     Resolution          _resolution;

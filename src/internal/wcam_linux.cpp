@@ -182,15 +182,15 @@ auto select_pixel_format(int fd, int width, int height) -> uint32_t
 }
 
 CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
-    : _resolution{resolution}
+    : _webcam_handle{open(id.as_string().c_str(), O_RDWR)}
+    , _resolution{resolution}
 {
-    fd = open(id.as_string().c_str(), O_RDWR);
-    if (fd == -1)
+    if (_webcam_handle == -1)
     {
         perror("Failed to open device");
         exit(EXIT_FAILURE);
     }
-    _pixels_format = select_pixel_format(fd, resolution.width(), resolution.height());
+    _pixels_format = select_pixel_format(_webcam_handle, resolution.width(), resolution.height());
 
     struct v4l2_format fmt;
     memset(&fmt, 0, sizeof(fmt));
@@ -200,7 +200,7 @@ CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
     fmt.fmt.pix.pixelformat = _pixels_format;
     fmt.fmt.pix.field       = V4L2_FIELD_NONE;
 
-    if (ioctl(fd, VIDIOC_S_FMT, &fmt) == -1)
+    if (ioctl(_webcam_handle, VIDIOC_S_FMT, &fmt) == -1)
     {
         // perror("Failed to set format");
         throw CaptureException{Error_WebcamAlreadyUsedInAnotherApplication{}}; // TODO cleaner
@@ -212,7 +212,7 @@ CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
     req.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     req.memory = V4L2_MEMORY_MMAP;
 
-    if (ioctl(fd, VIDIOC_REQBUFS, &req) == -1)
+    if (ioctl(_webcam_handle, VIDIOC_REQBUFS, &req) == -1)
     {
         perror("Failed to request buffers");
     }
@@ -226,13 +226,13 @@ CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
         buf.memory = V4L2_MEMORY_MMAP;
         buf.index  = i;
 
-        if (ioctl(fd, VIDIOC_QUERYBUF, &buf) == -1)
+        if (ioctl(_webcam_handle, VIDIOC_QUERYBUF, &buf) == -1)
         {
             perror("Failed to query buffer");
         }
 
         buffers[i].size = buf.length;
-        buffers[i].ptr  = mmap(NULL, buf.length, PROT_READ | PROT_WRITE, MAP_SHARED, fd, buf.m.offset);
+        buffers[i].ptr  = mmap(NULL, buf.length, PROT_READ | PROT_WRITE, MAP_SHARED, _webcam_handle, buf.m.offset);
         if (buffers[i].ptr == MAP_FAILED)
         {
             perror("Failed to map buffer");
@@ -246,14 +246,14 @@ CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
         buf.memory = V4L2_MEMORY_MMAP;
         buf.index  = i;
 
-        if (ioctl(fd, VIDIOC_QBUF, &buf) == -1)
+        if (ioctl(_webcam_handle, VIDIOC_QBUF, &buf) == -1)
         {
             perror("Failed to queue buffer");
         }
     }
 
     enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    if (ioctl(fd, VIDIOC_STREAMON, &type) == -1)
+    if (ioctl(_webcam_handle, VIDIOC_STREAMON, &type) == -1)
     {
         perror("Failed to start capture");
     }
@@ -267,7 +267,7 @@ CaptureImpl::~CaptureImpl()
     _thread.join();
 
     enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    if (ioctl(fd, VIDIOC_STREAMOFF, &type) == -1)
+    if (ioctl(_webcam_handle, VIDIOC_STREAMOFF, &type) == -1)
     {
         perror("Failed to stop capture");
     }
@@ -278,7 +278,7 @@ CaptureImpl::~CaptureImpl()
             perror("Failed to unmap buffer");
         }
     }
-    if (close(fd) == -1)
+    if (close(_webcam_handle) == -1)
     {
         perror("Failed to close device");
     }
@@ -298,7 +298,7 @@ void CaptureImpl::process_next_image()
     buf.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     buf.memory = V4L2_MEMORY_MMAP;
 
-    if (ioctl(fd, VIDIOC_DQBUF, &buf) == -1) // Blocks until a new frame is available
+    if (ioctl(_webcam_handle, VIDIOC_DQBUF, &buf) == -1) // Blocks until a new frame is available
     {
         perror("Failed to dequeue buffer");
         // return false;
@@ -319,7 +319,7 @@ void CaptureImpl::process_next_image()
         assert(false);
     };
     set_image(std::move(image));
-    if (ioctl(fd, VIDIOC_QBUF, &buf) == -1)
+    if (ioctl(_webcam_handle, VIDIOC_QBUF, &buf) == -1)
     {
         perror("Failed to queue buffer");
     }
