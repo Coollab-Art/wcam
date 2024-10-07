@@ -1,6 +1,7 @@
 #if defined(__linux__)
 #include "wcam_linux.hpp"
 #include <fcntl.h>
+#include <jpeglib.h>
 #include <linux/videodev2.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
@@ -12,6 +13,7 @@
 #include <cstring>
 #include <filesystem>
 #include <iostream>
+#include <thread>
 #include <vector>
 #include "../Info.hpp"
 #include "ICaptureImpl.hpp"
@@ -19,6 +21,41 @@
 #include "make_device_id.hpp"
 
 namespace wcam::internal {
+
+void mjpeg_to_rgb(unsigned char* mjpeg_data, unsigned long mjpeg_size, unsigned char** rgb_data, int* width, int* height)
+{
+    struct jpeg_decompress_struct cinfo;
+    struct jpeg_error_mgr         jerr;
+
+    cinfo.err = jpeg_std_error(&jerr);
+    jpeg_create_decompress(&cinfo);
+
+    // Set memory buffer as the input source for JPEG decompression
+    jpeg_mem_src(&cinfo, mjpeg_data, mjpeg_size);
+
+    // Read JPEG header
+    jpeg_read_header(&cinfo, TRUE);
+    jpeg_start_decompress(&cinfo);
+
+    *width  = cinfo.output_width;
+    *height = cinfo.output_height;
+
+    // Allocate memory for RGB data
+    int row_stride = cinfo.output_width * cinfo.output_components;
+    *rgb_data      = (unsigned char*)malloc(cinfo.output_width * cinfo.output_height * cinfo.output_components);
+
+    // Decompress each scanline and store in the RGB buffer
+    while (cinfo.output_scanline < cinfo.output_height)
+    {
+        unsigned char* buffer_array[1];
+        buffer_array[0] = *rgb_data + (cinfo.output_scanline) * row_stride;
+        jpeg_read_scanlines(&cinfo, buffer_array, 1);
+    }
+
+    // Finish decompression
+    jpeg_finish_decompress(&cinfo);
+    jpeg_destroy_decompress(&cinfo);
+}
 
 void yuyv_to_rgb(unsigned char* yuyv, unsigned char* rgb, int width, int height)
 {
@@ -235,24 +272,38 @@ Bob::~Bob()
 }
 
 CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
-    : _bob{id, resolution}
+    : _resolution{resolution}
+    // : _bob{id, resolution}
     , _thread{&CaptureImpl::thread_job, std::ref(*this)}
 {
+    V4L2DeviceParameters param(id.as_string().c_str(), V4L2_PIX_FMT_MJPEG, resolution.width(), resolution.height(), 30, IOTYPE_MMAP);
+    videoCapture = V4l2Capture::create(param);
 }
 
 CaptureImpl::~CaptureImpl()
 {
-    _wants_to_stop_thread.store(true);
-    _thread.join();
+    // _wants_to_stop_thread.store(true);
+    // _thread.join();
 }
 
 void CaptureImpl::thread_job(CaptureImpl& This)
 {
+    using namespace std::literals;
+    std::this_thread::sleep_for(2000ms);
     while (!This._wants_to_stop_thread.load())
     {
-        auto image = image_factory().make_image();
-        image->set_data(ImageDataView<RGB24>{This._bob.getFrame(), static_cast<size_t>(This._bob._resolution.pixels_count() * 3), This._bob._resolution, wcam::FirstRowIs::Top});
-        This.set_image(std::move(image));
+        timeval timeout;
+        if (This.videoCapture->isReadable(&timeout))
+        {
+            auto     image  = image_factory().make_image();
+            char*    buffer = new char[This._resolution.pixels_count() * 3];
+            size_t   nb     = This.videoCapture->read(buffer, This._resolution.pixels_count() * 3);
+            uint8_t* rgb_data; // new uint8_t[This._resolution.pixels_count() * 3];
+            int      w, h;
+            mjpeg_to_rgb((unsigned char*)buffer, This._resolution.pixels_count() * 3, &rgb_data, &w, &h);
+            image->set_data(ImageDataView<RGB24>{rgb_data, static_cast<size_t>(This._resolution.pixels_count() * 3), This._resolution, wcam::FirstRowIs::Top});
+            This.set_image(std::move(image));
+        }
     }
 }
 

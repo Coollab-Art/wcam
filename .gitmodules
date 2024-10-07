@@ -1,3 +1,6 @@
 [submodule "tooling"]
 	path = tooling
 	url = https://github.com/CoolLibs/tooling
+[submodule "lib/libv4l2cpp"]
+	path = lib/libv4l2cpp
+	url = https://github.com/mpromonet/libv4l2cpp
