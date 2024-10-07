@@ -206,7 +206,7 @@ auto select_pixel_format(int fd, int width, int height) -> uint32_t
     throw CaptureException{Error_Unknown{"Unsupported pixel format"}};
 }
 
-Bob::Bob(DeviceId const& id, Resolution const& resolution)
+CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
     : _resolution{resolution}
 {
     fd = open(id.as_string().c_str(), O_RDWR);
@@ -282,10 +282,15 @@ Bob::Bob(DeviceId const& id, Resolution const& resolution)
     {
         perror("Failed to start capture");
     }
+
+    _thread = std::thread{&CaptureImpl::thread_job, std::ref(*this)};
 }
 
-Bob::~Bob()
+CaptureImpl::~CaptureImpl()
 {
+    _wants_to_stop_thread.store(true);
+    _thread.join();
+
     enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     if (ioctl(fd, VIDIOC_STREAMOFF, &type) == -1)
     {
@@ -304,24 +309,13 @@ Bob::~Bob()
     }
 }
 
-CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
-    : _bob{id, resolution}
-    , _thread{&CaptureImpl::thread_job, std::ref(*this)}
-{}
-
-CaptureImpl::~CaptureImpl()
-{
-    _wants_to_stop_thread.store(true);
-    _thread.join();
-}
-
 void CaptureImpl::thread_job(CaptureImpl& This)
 {
     while (!This._wants_to_stop_thread.load())
     {
-        std::shared_ptr<uint8_t> data  = This._bob.getFrame(); // Blocks until a new image is received
+        std::shared_ptr<uint8_t> data  = This.getFrame(); // Blocks until a new image is received
         auto                     image = image_factory().make_image();
-        image->set_data(ImageDataView<RGB24>{std::move(data), static_cast<size_t>(This._bob._resolution.pixels_count() * 3), This._bob._resolution, wcam::FirstRowIs::Top});
+        image->set_data(ImageDataView<RGB24>{std::move(data), static_cast<size_t>(This._resolution.pixels_count() * 3), This._resolution, wcam::FirstRowIs::Top});
         This.set_image(std::move(image));
 
         // timeval timeout;
@@ -339,7 +333,7 @@ void CaptureImpl::thread_job(CaptureImpl& This)
     }
 }
 
-auto Bob::getFrame() -> std::shared_ptr<uint8_t>
+auto CaptureImpl::getFrame() -> std::shared_ptr<uint8_t>
 {
     struct v4l2_buffer buf;
     memset(&buf, 0, sizeof(buf));
