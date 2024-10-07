@@ -136,9 +136,6 @@ static auto for_each_webcam_id_path(std::function<void(const char* webcam_id_pat
     {
         for (auto const& entry : std::filesystem::directory_iterator("/dev/v4l/by-id"))
         {
-            // if (entry.path().string().find("video") == std::string::npos)
-            //     continue;
-            // TODO check that its a file
             callback(entry.path().string().c_str());
         }
     }
@@ -227,19 +224,20 @@ auto select_pixel_format(int fd, int width, int height) -> uint32_t
 
 static auto find_webcam_path(DeviceId const& id) -> std::string
 {
-    std::string path{};
-    for_each_webcam_id_path([&](const char* webcam_id_path) {
-        int const video_device = open(webcam_id_path, O_RDONLY);
-        if (video_device == -1)
-            return;
-        auto const scope_guard = CloseFileAtExit{video_device};
-        if (get_webcam_id(webcam_id_path) == id)
-            path = webcam_id_path;
-    });
-    if (path.empty())
-        throw CaptureException{Error_WebcamUnplugged{}};
-    std::cout << path << '\n';
-    return path;
+    return "/dev/v4l/by-id/" + id.as_string();
+    // std::string path{};
+    // for_each_webcam_id_path([&](const char* webcam_id_path) {
+    // int const video_device = open(webcam_id_path, O_RDONLY);
+    // if (video_device == -1)
+    //     return;
+    // auto const scope_guard = CloseFileAtExit{video_device};
+    //     if (get_webcam_id(webcam_id_path) == id)
+    //         path = webcam_id_path;
+    // });
+    // if (path.empty())
+    //     throw CaptureException{Error_WebcamUnplugged{}};
+    // std::cout << path << '\n';
+    // return path;
 }
 
 CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
@@ -247,10 +245,7 @@ CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
     , _resolution{resolution}
 {
     if (_webcam_handle == -1)
-    {
-        perror("Failed to open device");
-        exit(EXIT_FAILURE);
-    }
+        throw CaptureException{Error_WebcamUnplugged{}};
     _pixels_format = select_pixel_format(_webcam_handle, resolution.width(), resolution.height());
 
     struct v4l2_format fmt;
