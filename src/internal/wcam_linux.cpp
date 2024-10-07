@@ -54,31 +54,6 @@ void mjpeg_to_rgb(unsigned char* mjpeg_data, unsigned long mjpeg_size, unsigned 
     jpeg_destroy_decompress(&cinfo);
 }
 
-void yuyv_to_rgb(unsigned char* yuyv, unsigned char* rgb, int width, int height)
-{
-    for (int i = 0; i < width * height * 2; i += 4)
-    {
-        int y0 = yuyv[i + 0] << 8;
-        int u  = yuyv[i + 1] - 128;
-        int y1 = yuyv[i + 2] << 8;
-        int v  = yuyv[i + 3] - 128;
-
-        int r0 = (y0 + 359 * v) >> 8;
-        int g0 = (y0 - 88 * u - 183 * v) >> 8;
-        int b0 = (y0 + 454 * u) >> 8;
-        int r1 = (y1 + 359 * v) >> 8;
-        int g1 = (y1 - 88 * u - 183 * v) >> 8;
-        int b1 = (y1 + 454 * u) >> 8;
-
-        rgb[i * 3 / 2 + 0] = std::clamp(r0, 0, 255);
-        rgb[i * 3 / 2 + 1] = std::clamp(g0, 0, 255);
-        rgb[i * 3 / 2 + 2] = std::clamp(b0, 0, 255);
-        rgb[i * 3 / 2 + 3] = std::clamp(r1, 0, 255);
-        rgb[i * 3 / 2 + 4] = std::clamp(g1, 0, 255);
-        rgb[i * 3 / 2 + 5] = std::clamp(b1, 0, 255);
-    }
-}
-
 static auto find_available_resolutions(int const video_device) -> std::vector<Resolution>
 {
     std::vector<Resolution> available_resolutions;
@@ -203,7 +178,7 @@ auto select_pixel_format(int fd, int width, int height) -> uint32_t
             // }
         }
     }
-    throw CaptureException{Error_Unknown{"Unsupported pixel format"}};
+    throw CaptureException{Error_Unknown{"Unsupported pixel format"}}; // TODO list the supported formats
 }
 
 CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
@@ -312,28 +287,10 @@ CaptureImpl::~CaptureImpl()
 void CaptureImpl::thread_job(CaptureImpl& This)
 {
     while (!This._wants_to_stop_thread.load())
-    {
-        std::shared_ptr<uint8_t> data  = This.getFrame(); // Blocks until a new image is received
-        auto                     image = image_factory().make_image();
-        image->set_data(ImageDataView<RGB24>{std::move(data), static_cast<size_t>(This._resolution.pixels_count() * 3), This._resolution, wcam::FirstRowIs::Top});
-        This.set_image(std::move(image));
-
-        // timeval timeout;
-        // if (This.videoCapture->isReadable(&timeout))
-        // {
-        //     auto     image  = image_factory().make_image();
-        //     char*    buffer = new char[This._resolution.pixels_count() * 3];
-        //     size_t   nb     = This.videoCapture->read(buffer, This._resolution.pixels_count() * 3);
-        //     uint8_t* rgb_data; // new uint8_t[This._resolution.pixels_count() * 3];
-        //     int      w, h;
-        //     mjpeg_to_rgb((unsigned char*)buffer, This._resolution.pixels_count() * 3, &rgb_data, &w, &h);
-        //     image->set_data(ImageDataView<RGB24>{rgb_data, static_cast<size_t>(This._resolution.pixels_count() * 3), This._resolution, wcam::FirstRowIs::Top});
-        //     This.set_image(std::move(image));
-        // }
-    }
+        This.process_next_image();
 }
 
-auto CaptureImpl::getFrame() -> std::shared_ptr<uint8_t>
+void CaptureImpl::process_next_image()
 {
     struct v4l2_buffer buf;
     memset(&buf, 0, sizeof(buf));
@@ -346,20 +303,26 @@ auto CaptureImpl::getFrame() -> std::shared_ptr<uint8_t>
         perror("Failed to dequeue buffer");
         // return false;
     }
-    uint8_t* rgb_data = new uint8_t[_resolution.pixels_count() * 3];
+    auto image = image_factory().make_image();
+
     if (_pixels_format == V4L2_PIX_FMT_YUYV)
-        yuyv_to_rgb((unsigned char*)buffers[0].ptr, rgb_data, _resolution.width(), _resolution.height());
+        image->set_data(ImageDataView<YUYV>{(unsigned char*)buffers[0].ptr, buffers[0].size, _resolution, wcam::FirstRowIs::Top});
+    // yuyv_to_rgb(, rgb_data, _resolution.width(), _resolution.height());
     else if (_pixels_format == V4L2_PIX_FMT_MJPEG)
+    {
+        uint8_t* rgb_data = new uint8_t[_resolution.pixels_count() * 3];
         mjpeg_to_rgb((unsigned char*)buffers[0].ptr, buffers[0].size, rgb_data);
+        image->set_data(ImageDataView<RGB24>{std::shared_ptr<uint8_t>{rgb_data}, _resolution.pixels_count() * 3, _resolution, wcam::FirstRowIs::Top});
+    }
     else
     {
         assert(false);
     };
+    set_image(std::move(image));
     if (ioctl(fd, VIDIOC_QBUF, &buf) == -1)
     {
         perror("Failed to queue buffer");
     }
-    return std::shared_ptr<uint8_t>{rgb_data};
 }
 
 } // namespace wcam::internal

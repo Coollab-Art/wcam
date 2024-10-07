@@ -31,6 +31,13 @@ struct NV12 {
     }
 };
 
+struct YUYV {
+    static auto data_length(Resolution resolution) -> size_t
+    {
+        return resolution.pixels_count() * 2;
+    }
+};
+
 template<typename PixelFormatT>
 class ImageData {
 public:
@@ -114,6 +121,7 @@ public:
     virtual void set_data(ImageDataView<RGB24> const&) = 0;
     virtual void set_data(ImageDataView<BGR24> const&);
     virtual void set_data(ImageDataView<NV12> const&);
+    virtual void set_data(ImageDataView<YUYV> const&);
 };
 
 } // namespace wcam

@@ -21,6 +21,9 @@ Then include it as:
 ```
 See [the documentation about this](https://developer.apple.com/documentation/bundleresources/information_property_list/protected_resources/requesting_authorization_for_media_capture_on_macos?language=objc).
 
+## Using
+
+Def your image type. You need to at least implement set_rgb_data. Implem the other if you have something more perf to do than just convert to rgb and then call your rgb func. You might at least want to implem bgr (on windows you will often receive BGR, never RGB directly)
 
 ## Running the tests
 

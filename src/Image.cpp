@@ -66,6 +66,34 @@ static auto NV12_to_RGB24(uint8_t const* nv12Data, Resolution resolution) -> std
     return std::shared_ptr<uint8_t const>{rgb_data};
 }
 
+static auto YUYV_to_RGB24(uint8_t const* yuyv, Resolution resolution) -> std::shared_ptr<uint8_t const>
+{
+    auto* const rgb_data = new uint8_t[resolution.pixels_count() * 3]; // NOLINT(*owning-memory)
+    for (int i = 0; i < resolution.pixels_count() * 2; i += 4)
+    {
+        int y0 = yuyv[i + 0] << 8;
+        int u  = yuyv[i + 1] - 128;
+        int y1 = yuyv[i + 2] << 8;
+        int v  = yuyv[i + 3] - 128;
+
+        int r0 = (y0 + 359 * v) >> 8;
+        int g0 = (y0 - 88 * u - 183 * v) >> 8;
+        int b0 = (y0 + 454 * u) >> 8;
+        int r1 = (y1 + 359 * v) >> 8;
+        int g1 = (y1 - 88 * u - 183 * v) >> 8;
+        int b1 = (y1 + 454 * u) >> 8;
+
+        rgb_data[i * 3 / 2 + 0] = std::clamp(r0, 0, 255);
+        rgb_data[i * 3 / 2 + 1] = std::clamp(g0, 0, 255);
+        rgb_data[i * 3 / 2 + 2] = std::clamp(b0, 0, 255);
+        rgb_data[i * 3 / 2 + 3] = std::clamp(r1, 0, 255);
+        rgb_data[i * 3 / 2 + 4] = std::clamp(g1, 0, 255);
+        rgb_data[i * 3 / 2 + 5] = std::clamp(b1, 0, 255);
+    }
+
+    return std::shared_ptr<uint8_t const>{rgb_data};
+}
+
 void Image::set_data(ImageDataView<BGR24> const& bgrData)
 {
     set_data(ImageDataView<RGB24>{
@@ -83,6 +111,16 @@ void Image::set_data(ImageDataView<NV12> const& nv12_data)
         RGB24::data_length(nv12_data.resolution()),
         nv12_data.resolution(),
         nv12_data.row_order()
+    });
+}
+
+void Image::set_data(ImageDataView<YUYV> const& yuyv_data)
+{
+    set_data(ImageDataView<RGB24>{
+        YUYV_to_RGB24(yuyv_data.data(), yuyv_data.resolution()),
+        RGB24::data_length(yuyv_data.resolution()),
+        yuyv_data.resolution(),
+        yuyv_data.row_order()
     });
 }
 

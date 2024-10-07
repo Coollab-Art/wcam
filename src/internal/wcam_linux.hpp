@@ -23,8 +23,8 @@ public:
     auto operator=(CaptureImpl&&) noexcept -> CaptureImpl& = delete;
 
 private:
-    auto        getFrame() -> std::shared_ptr<uint8_t>;
     static void thread_job(CaptureImpl&);
+    void        process_next_image();
 
 private:
     int                 fd{-1};
