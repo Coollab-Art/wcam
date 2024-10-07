@@ -11,8 +11,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <exception>
 #include <filesystem>
 #include <format>
+#include <functional>
 #include <iostream>
 #include <source_location>
 #include <thread>
@@ -128,37 +130,56 @@ private:
     int _file_descriptor{};
 };
 
+static auto for_each_webcam_id_path(std::function<void(const char* webcam_id_path)> const& callback)
+{
+    try
+    {
+        for (auto const& entry : std::filesystem::directory_iterator("/dev/v4l/by-id"))
+        {
+            // if (entry.path().string().find("video") == std::string::npos)
+            //     continue;
+            // TODO check that its a file
+            callback(entry.path().string().c_str());
+        }
+    }
+    catch (std::exception const&)
+    {
+    }
+}
+
+static auto get_webcam_name(int video_device) -> std::string
+{
+    v4l2_capability cap{};
+    if (ioctl(video_device, VIDIOC_QUERYCAP, &cap) == -1)
+        return "";
+
+    if (!(cap.capabilities & V4L2_CAP_VIDEO_CAPTURE))
+        return "";
+
+    return reinterpret_cast<char const*>(cap.card); // NOLINT(*-pro-type-reinterpret-cast)
+}
+
+static auto get_webcam_id(const char* webcam_id_path) -> DeviceId
+{
+    return make_device_id(std::filesystem::path{webcam_id_path}.filename());
+}
+
 auto grab_all_infos_impl() -> std::vector<Info>
 {
     std::vector<Info> list_webcam_info{};
 
-    for (auto const& entry : std::filesystem::directory_iterator("/dev"))
-    {
-        if (entry.path().string().find("video") == std::string::npos)
-            continue;
-
-        // TODO check that its a file
-
-        int const video_device = open(entry.path().c_str(), O_RDONLY);
+    for_each_webcam_id_path([&](const char* webcam_id_path) {
+        int const video_device = open(webcam_id_path, O_RDONLY);
         if (video_device == -1)
-            continue;
+            return;
         auto const scope_guard = CloseFileAtExit{video_device};
-
-        v4l2_capability cap{};
-        if (ioctl(video_device, VIDIOC_QUERYCAP, &cap) == -1)
-            continue;
-
-        if (!(cap.capabilities & V4L2_CAP_VIDEO_CAPTURE))
-            continue;
-
-        std::string const webcam_name = reinterpret_cast<char const*>(cap.card); // NOLINT(*-pro-type-reinterpret-cast)
 
         std::vector<Resolution> const available_resolutions = find_available_resolutions(video_device);
         if (available_resolutions.empty())
-            continue;
+            return;
 
-        list_webcam_info.push_back({webcam_name, make_device_id(entry.path()), available_resolutions});
-    }
+        list_webcam_info.push_back({get_webcam_name(video_device), get_webcam_id(webcam_id_path), available_resolutions});
+    });
 
     return list_webcam_info;
 }
@@ -204,8 +225,25 @@ auto select_pixel_format(int fd, int width, int height) -> uint32_t
     throw CaptureException{Error_Unknown{"Unsupported pixel format"}}; // TODO list the supported formats
 }
 
+static auto find_webcam_path(DeviceId const& id) -> std::string
+{
+    std::string path{};
+    for_each_webcam_id_path([&](const char* webcam_id_path) {
+        int const video_device = open(webcam_id_path, O_RDONLY);
+        if (video_device == -1)
+            return;
+        auto const scope_guard = CloseFileAtExit{video_device};
+        if (get_webcam_id(webcam_id_path) == id)
+            path = webcam_id_path;
+    });
+    if (path.empty())
+        throw CaptureException{Error_WebcamUnplugged{}};
+    std::cout << path << '\n';
+    return path;
+}
+
 CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
-    : _webcam_handle{open(id.as_string().c_str(), O_RDWR)}
+    : _webcam_handle{open(find_webcam_path(id).c_str(), O_RDWR)}
     , _resolution{resolution}
 {
     if (_webcam_handle == -1)
