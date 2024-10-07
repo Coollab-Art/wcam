@@ -17,7 +17,7 @@ class Bob {
 public:
     Bob(DeviceId const& id, Resolution const& resolution);
     ~Bob();
-    auto       getFrame() -> uint8_t*;
+    auto       getFrame() -> std::shared_ptr<uint8_t>;
     Resolution _resolution;
 
 private:

@@ -6,9 +6,6 @@ add_library(wcam)
 add_library(wcam::wcam ALIAS wcam)
 target_compile_features(wcam PUBLIC cxx_std_20)
 
-find_package(JPEG REQUIRED)
-target_link_libraries(wcam PRIVATE JPEG::JPEG)
-
 # ---Add source files---
 if(WARNINGS_AS_ERRORS_FOR_WCAM)
     target_include_directories(wcam PUBLIC include)
@@ -57,4 +54,7 @@ elseif(APPLE)
     if(NOT XCODE)
         set_source_files_properties(${SRC_FILES_MACOS} PROPERTIES COMPILE_FLAGS -fobjc-arc)
     endif()
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    find_package(JPEG REQUIRED)
+    target_link_libraries(wcam PRIVATE JPEG::JPEG)
 endif()

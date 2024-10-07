@@ -319,9 +319,9 @@ void CaptureImpl::thread_job(CaptureImpl& This)
 {
     while (!This._wants_to_stop_thread.load())
     {
-        // TODO check if getFrame returned a new image or not ? Query timeout before we need to create a new image?
-        auto image = image_factory().make_image();
-        image->set_data(ImageDataView<RGB24>{This._bob.getFrame(), static_cast<size_t>(This._bob._resolution.pixels_count() * 3), This._bob._resolution, wcam::FirstRowIs::Top});
+        std::shared_ptr<uint8_t> data  = This._bob.getFrame(); // Blocks until a new image is received
+        auto                     image = image_factory().make_image();
+        image->set_data(ImageDataView<RGB24>{std::move(data), static_cast<size_t>(This._bob._resolution.pixels_count() * 3), This._bob._resolution, wcam::FirstRowIs::Top});
         This.set_image(std::move(image));
 
         // timeval timeout;
@@ -339,7 +339,7 @@ void CaptureImpl::thread_job(CaptureImpl& This)
     }
 }
 
-auto Bob::getFrame() -> uint8_t*
+auto Bob::getFrame() -> std::shared_ptr<uint8_t>
 {
     struct v4l2_buffer buf;
     memset(&buf, 0, sizeof(buf));
@@ -347,7 +347,7 @@ auto Bob::getFrame() -> uint8_t*
     buf.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     buf.memory = V4L2_MEMORY_MMAP;
 
-    if (ioctl(fd, VIDIOC_DQBUF, &buf) == -1)
+    if (ioctl(fd, VIDIOC_DQBUF, &buf) == -1) // Blocks until a new frame is available
     {
         perror("Failed to dequeue buffer");
         // return false;
@@ -365,7 +365,7 @@ auto Bob::getFrame() -> uint8_t*
     {
         perror("Failed to queue buffer");
     }
-    return rgb_data;
+    return std::shared_ptr<uint8_t>{rgb_data};
 }
 
 } // namespace wcam::internal
