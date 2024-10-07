@@ -6,9 +6,6 @@ add_library(wcam)
 add_library(wcam::wcam ALIAS wcam)
 target_compile_features(wcam PUBLIC cxx_std_20)
 
-add_subdirectory(lib/libv4l2cpp)
-target_link_libraries(wcam PUBLIC libv4l2cpp)
-
 find_package(JPEG REQUIRED)
 target_link_libraries(wcam PRIVATE JPEG::JPEG)
 

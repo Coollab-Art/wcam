@@ -22,7 +22,7 @@
 
 namespace wcam::internal {
 
-void mjpeg_to_rgb(unsigned char* mjpeg_data, unsigned long mjpeg_size, unsigned char** rgb_data, int* width, int* height)
+void mjpeg_to_rgb(unsigned char* mjpeg_data, unsigned long mjpeg_size, unsigned char* rgb_data)
 {
     struct jpeg_decompress_struct cinfo;
     struct jpeg_error_mgr         jerr;
@@ -37,18 +37,15 @@ void mjpeg_to_rgb(unsigned char* mjpeg_data, unsigned long mjpeg_size, unsigned 
     jpeg_read_header(&cinfo, TRUE);
     jpeg_start_decompress(&cinfo);
 
-    *width  = cinfo.output_width;
-    *height = cinfo.output_height;
-
     // Allocate memory for RGB data
     int row_stride = cinfo.output_width * cinfo.output_components;
-    *rgb_data      = (unsigned char*)malloc(cinfo.output_width * cinfo.output_height * cinfo.output_components);
+    // *rgb_data      = (unsigned char*)malloc(cinfo.output_width * cinfo.output_height * cinfo.output_components);
 
     // Decompress each scanline and store in the RGB buffer
     while (cinfo.output_scanline < cinfo.output_height)
     {
         unsigned char* buffer_array[1];
-        buffer_array[0] = *rgb_data + (cinfo.output_scanline) * row_stride;
+        buffer_array[0] = rgb_data + (cinfo.output_scanline) * row_stride;
         jpeg_read_scanlines(&cinfo, buffer_array, 1);
     }
 
@@ -189,7 +186,7 @@ Bob::Bob(DeviceId const& id, Resolution const& resolution)
     fmt.type                = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     fmt.fmt.pix.width       = _resolution.width();
     fmt.fmt.pix.height      = _resolution.height();
-    fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
+    fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_MJPEG; // TODO query which formats are possible (and which is the preferred one?)
     fmt.fmt.pix.field       = V4L2_FIELD_NONE;
 
     if (ioctl(fd, VIDIOC_S_FMT, &fmt) == -1)
@@ -272,38 +269,37 @@ Bob::~Bob()
 }
 
 CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
-    : _resolution{resolution}
-    // : _bob{id, resolution}
+    : _bob{id, resolution}
     , _thread{&CaptureImpl::thread_job, std::ref(*this)}
-{
-    V4L2DeviceParameters param(id.as_string().c_str(), V4L2_PIX_FMT_MJPEG, resolution.width(), resolution.height(), 30, IOTYPE_MMAP);
-    videoCapture = V4l2Capture::create(param);
-}
+{}
 
 CaptureImpl::~CaptureImpl()
 {
-    // _wants_to_stop_thread.store(true);
-    // _thread.join();
+    _wants_to_stop_thread.store(true);
+    _thread.join();
 }
 
 void CaptureImpl::thread_job(CaptureImpl& This)
 {
-    using namespace std::literals;
-    std::this_thread::sleep_for(2000ms);
     while (!This._wants_to_stop_thread.load())
     {
-        timeval timeout;
-        if (This.videoCapture->isReadable(&timeout))
-        {
-            auto     image  = image_factory().make_image();
-            char*    buffer = new char[This._resolution.pixels_count() * 3];
-            size_t   nb     = This.videoCapture->read(buffer, This._resolution.pixels_count() * 3);
-            uint8_t* rgb_data; // new uint8_t[This._resolution.pixels_count() * 3];
-            int      w, h;
-            mjpeg_to_rgb((unsigned char*)buffer, This._resolution.pixels_count() * 3, &rgb_data, &w, &h);
-            image->set_data(ImageDataView<RGB24>{rgb_data, static_cast<size_t>(This._resolution.pixels_count() * 3), This._resolution, wcam::FirstRowIs::Top});
-            This.set_image(std::move(image));
-        }
+        // TODO check if getFrame returned a new image or not ? Query timeout before we need to create a new image?
+        auto image = image_factory().make_image();
+        image->set_data(ImageDataView<RGB24>{This._bob.getFrame(), static_cast<size_t>(This._bob._resolution.pixels_count() * 3), This._bob._resolution, wcam::FirstRowIs::Top});
+        This.set_image(std::move(image));
+
+        // timeval timeout;
+        // if (This.videoCapture->isReadable(&timeout))
+        // {
+        //     auto     image  = image_factory().make_image();
+        //     char*    buffer = new char[This._resolution.pixels_count() * 3];
+        //     size_t   nb     = This.videoCapture->read(buffer, This._resolution.pixels_count() * 3);
+        //     uint8_t* rgb_data; // new uint8_t[This._resolution.pixels_count() * 3];
+        //     int      w, h;
+        //     mjpeg_to_rgb((unsigned char*)buffer, This._resolution.pixels_count() * 3, &rgb_data, &w, &h);
+        //     image->set_data(ImageDataView<RGB24>{rgb_data, static_cast<size_t>(This._resolution.pixels_count() * 3), This._resolution, wcam::FirstRowIs::Top});
+        //     This.set_image(std::move(image));
+        // }
     }
 }
 
@@ -321,7 +317,8 @@ auto Bob::getFrame() -> uint8_t*
         // return false;
     }
     uint8_t* rgb_data = new uint8_t[_resolution.pixels_count() * 3];
-    yuyv_to_rgb((unsigned char*)buffers[0].start, rgb_data, _resolution.width(), _resolution.height());
+    // yuyv_to_rgb((unsigned char*)buffers[0].start, rgb_data, _resolution.width(), _resolution.height());
+    mjpeg_to_rgb((unsigned char*)buffers[0].start, buffers[0].length, rgb_data);
 
     if (ioctl(fd, VIDIOC_QBUF, &buf) == -1)
     {
