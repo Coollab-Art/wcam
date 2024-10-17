@@ -15,7 +15,6 @@
 #include <filesystem>
 #include <format>
 #include <functional>
-#include <iostream>
 #include <source_location>
 #include <thread>
 #include <vector>
@@ -246,14 +245,14 @@ CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
 {
     if (_webcam_handle == -1)
         throw CaptureException{Error_WebcamUnplugged{}};
-    _pixels_format = select_pixel_format(_webcam_handle, resolution.width(), resolution.height());
+    _pixel_format = select_pixel_format(_webcam_handle, resolution.width(), resolution.height());
 
     struct v4l2_format fmt;
     memset(&fmt, 0, sizeof(fmt));
     fmt.type                = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     fmt.fmt.pix.width       = _resolution.width();
     fmt.fmt.pix.height      = _resolution.height();
-    fmt.fmt.pix.pixelformat = _pixels_format;
+    fmt.fmt.pix.pixelformat = _pixel_format;
     fmt.fmt.pix.field       = V4L2_FIELD_NONE;
 
     THROW_IF_ERR(ioctl(_webcam_handle, VIDIOC_S_FMT, &fmt));
@@ -266,7 +265,7 @@ CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
 
     THROW_IF_ERR(ioctl(_webcam_handle, VIDIOC_REQBUFS, &req));
 
-    buffers.resize(req.count);
+    _buffers.resize(req.count);
     for (size_t i = 0; i < req.count; ++i)
     {
         struct v4l2_buffer buf;
@@ -277,14 +276,14 @@ CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
 
         THROW_IF_ERR(ioctl(_webcam_handle, VIDIOC_QUERYBUF, &buf));
 
-        buffers[i].size = buf.length;
-        buffers[i].ptr  = mmap(NULL, buf.length, PROT_READ | PROT_WRITE, MAP_SHARED, _webcam_handle, buf.m.offset);
-        if (buffers[i].ptr == MAP_FAILED)
+        _buffers[i].size = buf.length;
+        _buffers[i].ptr  = mmap(NULL, buf.length, PROT_READ | PROT_WRITE, MAP_SHARED, _webcam_handle, buf.m.offset);
+        if (_buffers[i].ptr == MAP_FAILED)
         {
             perror("Failed to map buffer");
         }
     }
-    for (size_t i = 0; i < buffers.size(); ++i)
+    for (size_t i = 0; i < _buffers.size(); ++i)
     {
         struct v4l2_buffer buf;
         memset(&buf, 0, sizeof(buf));
@@ -311,9 +310,9 @@ CaptureImpl::~CaptureImpl()
     {
         perror("Failed to stop capture");
     }
-    for (size_t i = 0; i < buffers.size(); ++i)
+    for (size_t i = 0; i < _buffers.size(); ++i)
     {
-        if (munmap(buffers[i].ptr, buffers[i].size) == -1)
+        if (munmap(_buffers[i].ptr, _buffers[i].size) == -1)
         {
             perror("Failed to unmap buffer");
         }
@@ -345,13 +344,13 @@ void CaptureImpl::process_next_image()
     }
     auto image = image_factory().make_image();
 
-    if (_pixels_format == V4L2_PIX_FMT_YUYV)
-        image->set_data(ImageDataView<YUYV>{(unsigned char*)buffers[buf.index].ptr, buffers[buf.index].size, _resolution, wcam::FirstRowIs::Top});
+    if (_pixel_format == V4L2_PIX_FMT_YUYV)
+        image->set_data(ImageDataView<YUYV>{(unsigned char*)_buffers[buf.index].ptr, _buffers[buf.index].size, _resolution, wcam::FirstRowIs::Top});
     // yuyv_to_rgb(, rgb_data, _resolution.width(), _resolution.height());
-    else if (_pixels_format == V4L2_PIX_FMT_MJPEG)
+    else if (_pixel_format == V4L2_PIX_FMT_MJPEG)
     {
         uint8_t* rgb_data = new uint8_t[_resolution.pixels_count() * 3];
-        mjpeg_to_rgb((unsigned char*)buffers[buf.index].ptr, buffers[buf.index].size, rgb_data);
+        mjpeg_to_rgb((unsigned char*)_buffers[buf.index].ptr, _buffers[buf.index].size, rgb_data);
         image->set_data(ImageDataView<RGB24>{std::shared_ptr<uint8_t>{rgb_data}, _resolution.pixels_count() * 3, _resolution, wcam::FirstRowIs::Top});
     }
     else

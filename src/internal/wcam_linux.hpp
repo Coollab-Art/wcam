@@ -27,9 +27,9 @@ private:
     void        process_next_image();
 
 private:
-    int                 _webcam_handle{};
-    std::vector<Buffer> buffers;
-    uint32_t            _pixels_format;
+    int                 _webcam_handle;
+    std::vector<Buffer> _buffers;
+    uint32_t            _pixel_format;
     Resolution          _resolution;
 
     std::atomic<bool> _wants_to_stop_thread{false};
