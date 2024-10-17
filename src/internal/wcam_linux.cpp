@@ -16,36 +16,26 @@
 
 namespace wcam::internal {
 
-void mjpeg_to_rgb(unsigned char* mjpeg_data, unsigned long mjpeg_size, unsigned char* rgb_data)
+static void mjpeg_to_rgb(Buffer buffer, unsigned char* rgb_data)
 {
-    struct jpeg_decompress_struct cinfo; // NOLINT(*member-init)
-    struct jpeg_error_mgr         jerr;  // NOLINT(*member-init)
+    struct jpeg_decompress_struct info; // NOLINT(*member-init)
+    struct jpeg_error_mgr         err;  // NOLINT(*member-init)
 
-    cinfo.err = jpeg_std_error(&jerr);
-    jpeg_create_decompress(&cinfo);
+    info.err = jpeg_std_error(&err);
+    jpeg_create_decompress(&info);
 
-    // Set memory buffer as the input source for JPEG decompression
-    jpeg_mem_src(&cinfo, mjpeg_data, mjpeg_size);
+    jpeg_mem_src(&info, static_cast<unsigned char*>(buffer.ptr), buffer.size);
+    jpeg_read_header(&info, TRUE);
+    jpeg_start_decompress(&info);
 
-    // Read JPEG header
-    jpeg_read_header(&cinfo, TRUE);
-    jpeg_start_decompress(&cinfo);
-
-    // Allocate memory for RGB data
-    int row_stride = cinfo.output_width * cinfo.output_components;
-    // *rgb_data      = (unsigned char*)malloc(cinfo.output_width * cinfo.output_height * cinfo.output_components);
-
-    // Decompress each scanline and store in the RGB buffer
-    while (cinfo.output_scanline < cinfo.output_height)
+    while (info.output_scanline < info.output_height)
     {
-        unsigned char* buffer_array[1];
-        buffer_array[0] = rgb_data + (cinfo.output_scanline) * row_stride;
-        jpeg_read_scanlines(&cinfo, buffer_array, 1);
+        unsigned char* buffer_array = rgb_data + static_cast<uint64_t>(info.output_scanline) * static_cast<uint64_t>(info.output_width) * static_cast<uint64_t>(info.output_components); // NOLINT(*pointer-arithmetic)
+        jpeg_read_scanlines(&info, &buffer_array, 1);
     }
 
-    // Finish decompression
-    jpeg_finish_decompress(&cinfo);
-    jpeg_destroy_decompress(&cinfo);
+    jpeg_finish_decompress(&info);
+    jpeg_destroy_decompress(&info);
 }
 std::string getErrorMessage()
 {
@@ -336,12 +326,13 @@ void CaptureImpl::process_next_image()
     auto image = image_factory().make_image();
 
     if (_pixel_format == V4L2_PIX_FMT_YUYV)
-        image->set_data(ImageDataView<YUYV>{(unsigned char*)_buffers[buf.index].ptr, _buffers[buf.index].size, _resolution, wcam::FirstRowIs::Top});
-    // yuyv_to_rgb(, rgb_data, _resolution.width(), _resolution.height());
+    {
+        image->set_data(ImageDataView<YUYV>{static_cast<unsigned char*>(_buffers[buf.index].ptr), _buffers[buf.index].size, _resolution, wcam::FirstRowIs::Top});
+    }
     else if (_pixel_format == V4L2_PIX_FMT_MJPEG)
     {
-        uint8_t* rgb_data = new uint8_t[_resolution.pixels_count() * 3];
-        mjpeg_to_rgb((unsigned char*)_buffers[buf.index].ptr, _buffers[buf.index].size, rgb_data);
+        auto* const rgb_data = new uint8_t[_resolution.pixels_count() * 3]; // NOLINT(*owning-memory)
+        mjpeg_to_rgb(_buffers[buf.index], rgb_data);
         image->set_data(ImageDataView<RGB24>{std::shared_ptr<uint8_t>{rgb_data}, _resolution.pixels_count() * 3, _resolution, wcam::FirstRowIs::Top});
     }
     else
