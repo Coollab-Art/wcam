@@ -16,45 +16,48 @@
 
 namespace wcam::internal {
 
-static void mjpeg_to_rgb(Buffer buffer, unsigned char* rgb_data)
+static auto errno_to_string(int errnum) -> std::string
 {
-    struct jpeg_decompress_struct info; // NOLINT(*member-init)
-    struct jpeg_error_mgr         err;  // NOLINT(*member-init)
+    auto error_message = std::string(128, '\0'); // Start with a reasonable buffer size
 
-    info.err = jpeg_std_error(&err);
-    jpeg_create_decompress(&info);
-
-    jpeg_mem_src(&info, static_cast<unsigned char*>(buffer.ptr), buffer.size);
-    jpeg_read_header(&info, TRUE);
-    jpeg_start_decompress(&info);
-
-    while (info.output_scanline < info.output_height)
+#ifdef _GNU_SOURCE
+    // GNU version of strerror_r returns a char*
+    char* const result = strerror_r(errnum, error_message.data(), error_message.size());
+    // The result may not use the provided buffer, but an internal buffer instead, so return a copy of that buffer
+    if (result != error_message.data())
+        return result;
+#else
+    // POSIX version of strerror_r returns an int and fills the buffer
+    int result;
+    while (true) // Retry until we succeed
     {
-        unsigned char* buffer_array = rgb_data + static_cast<uint64_t>(info.output_scanline) * static_cast<uint64_t>(info.output_width) * static_cast<uint64_t>(info.output_components); // NOLINT(*pointer-arithmetic)
-        jpeg_read_scanlines(&info, &buffer_array, 1);
+        result = strerror_r(errnum, error_message.data(), error_message.size());
+        if (result != ERANGE)
+            break;
+        error_message.resize(error_message.size() * 2);
     }
 
-    jpeg_finish_decompress(&info);
-    jpeg_destroy_decompress(&info);
-}
-std::string getErrorMessage()
-{
-    return std::string(strerror(errno));
+    if (result != 0)
+        return "Unknown error";
+#endif
+
+    // Resize the string to fit the actual message length
+    error_message.resize(std::strlen(error_message.c_str()));
+    return error_message;
 }
 
 static void throw_error(std::string const& err, std::string_view code_that_failed, std::source_location location = std::source_location::current())
 {
     if (errno == 16)
         throw CaptureException{Error_WebcamAlreadyUsedInAnotherApplication{}};
-    else
-        throw CaptureException{Error_Unknown{std::format("{}\n(During `{}`, at {}({}:{}))", err, code_that_failed, location.file_name(), location.line(), location.column())}};
+    throw CaptureException{Error_Unknown{std::format("{}\n(During `{}`, at {}({}:{}))", err, code_that_failed, location.file_name(), location.line(), location.column())}};
 }
 
-#define THROW_IF_ERR(exp) /*NOLINT(*macro*)*/     \
-    {                                             \
-        int const err_code = exp;                 \
-        if (err_code == -1)                       \
-            throw_error(getErrorMessage(), #exp); \
+#define THROW_IF_ERR(exp) /*NOLINT(*macro*)*/          \
+    {                                                  \
+        int const err_code = exp;                      \
+        if (err_code == -1)                            \
+            throw_error(errno_to_string(errno), #exp); \
     }
 
 static auto find_available_resolutions(int const video_device) -> std::vector<Resolution>
@@ -308,6 +311,28 @@ void CaptureImpl::thread_job(CaptureImpl& This)
 {
     while (!This._wants_to_stop_thread.load())
         This.process_next_image();
+}
+
+static void mjpeg_to_rgb(Buffer buffer, unsigned char* rgb_data)
+{
+    struct jpeg_decompress_struct info; // NOLINT(*member-init)
+    struct jpeg_error_mgr         err;  // NOLINT(*member-init)
+
+    info.err = jpeg_std_error(&err);
+    jpeg_create_decompress(&info);
+
+    jpeg_mem_src(&info, static_cast<unsigned char*>(buffer.ptr), buffer.size);
+    jpeg_read_header(&info, TRUE);
+    jpeg_start_decompress(&info);
+
+    while (info.output_scanline < info.output_height)
+    {
+        unsigned char* buffer_array = rgb_data + static_cast<uint64_t>(info.output_scanline) * static_cast<uint64_t>(info.output_width) * static_cast<uint64_t>(info.output_components); // NOLINT(*pointer-arithmetic)
+        jpeg_read_scanlines(&info, &buffer_array, 1);
+    }
+
+    jpeg_finish_decompress(&info);
+    jpeg_destroy_decompress(&info);
 }
 
 void CaptureImpl::process_next_image()
