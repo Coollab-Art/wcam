@@ -69,26 +69,26 @@ static auto NV12_to_RGB24(uint8_t const* nv12Data, Resolution resolution) -> std
 static auto YUYV_to_RGB24(uint8_t const* yuyv, Resolution resolution) -> std::shared_ptr<uint8_t const>
 {
     auto* const rgb_data = new uint8_t[resolution.pixels_count() * 3]; // NOLINT(*owning-memory)
-    for (int i = 0; i < resolution.pixels_count() * 2; i += 4)
+    for (uint64_t i = 0; i < resolution.pixels_count() * 2; i += 4)
     {
-        int y0 = yuyv[i + 0] << 8;
-        int u  = yuyv[i + 1] - 128;
-        int y1 = yuyv[i + 2] << 8;
-        int v  = yuyv[i + 3] - 128;
+        auto const y0 = static_cast<int>(yuyv[i + 0] << 8);  // NOLINT(*pointer-arithmetic)
+        auto const u  = static_cast<int>(yuyv[i + 1] - 128); // NOLINT(*pointer-arithmetic)
+        auto const y1 = static_cast<int>(yuyv[i + 2] << 8);  // NOLINT(*pointer-arithmetic)
+        auto const v  = static_cast<int>(yuyv[i + 3] - 128); // NOLINT(*pointer-arithmetic)
 
-        int r0 = (y0 + 359 * v) >> 8;
-        int g0 = (y0 - 88 * u - 183 * v) >> 8;
-        int b0 = (y0 + 454 * u) >> 8;
-        int r1 = (y1 + 359 * v) >> 8;
-        int g1 = (y1 - 88 * u - 183 * v) >> 8;
-        int b1 = (y1 + 454 * u) >> 8;
+        int const r0 = (y0 + 359 * v) >> 8;
+        int const g0 = (y0 - 88 * u - 183 * v) >> 8;
+        int const b0 = (y0 + 454 * u) >> 8;
+        int const r1 = (y1 + 359 * v) >> 8;
+        int const g1 = (y1 - 88 * u - 183 * v) >> 8;
+        int const b1 = (y1 + 454 * u) >> 8;
 
-        rgb_data[i * 3 / 2 + 0] = std::clamp(r0, 0, 255);
-        rgb_data[i * 3 / 2 + 1] = std::clamp(g0, 0, 255);
-        rgb_data[i * 3 / 2 + 2] = std::clamp(b0, 0, 255);
-        rgb_data[i * 3 / 2 + 3] = std::clamp(r1, 0, 255);
-        rgb_data[i * 3 / 2 + 4] = std::clamp(g1, 0, 255);
-        rgb_data[i * 3 / 2 + 5] = std::clamp(b1, 0, 255);
+        rgb_data[i * 3 / 2 + 0] = std::clamp(r0, 0, 255); // NOLINT(*pointer-arithmetic)
+        rgb_data[i * 3 / 2 + 1] = std::clamp(g0, 0, 255); // NOLINT(*pointer-arithmetic)
+        rgb_data[i * 3 / 2 + 2] = std::clamp(b0, 0, 255); // NOLINT(*pointer-arithmetic)
+        rgb_data[i * 3 / 2 + 3] = std::clamp(r1, 0, 255); // NOLINT(*pointer-arithmetic)
+        rgb_data[i * 3 / 2 + 4] = std::clamp(g1, 0, 255); // NOLINT(*pointer-arithmetic)
+        rgb_data[i * 3 / 2 + 5] = std::clamp(b1, 0, 255); // NOLINT(*pointer-arithmetic)
     }
 
     return std::shared_ptr<uint8_t const>{rgb_data};
