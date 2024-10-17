@@ -5,21 +5,12 @@
 #include <linux/videodev2.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
-#include <sys/types.h>
-#include <unistd.h>
-#include <cstdint>
-#include <cstdio>
-#include <cstdlib>
 #include <cstring>
-#include <exception>
 #include <filesystem>
 #include <format>
 #include <functional>
 #include <source_location>
-#include <thread>
-#include <vector>
 #include "../Info.hpp"
-#include "ICaptureImpl.hpp"
 #include "ImageFactory.hpp"
 #include "make_device_id.hpp"
 
