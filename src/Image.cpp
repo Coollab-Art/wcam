@@ -83,12 +83,12 @@ static auto YUYV_to_RGB24(uint8_t const* yuyv, Resolution resolution) -> std::sh
         int const g1 = (y1 - 88 * u - 183 * v) >> 8;
         int const b1 = (y1 + 454 * u) >> 8;
 
-        rgb_data[i * 3 / 2 + 0] = std::clamp(r0, 0, 255); // NOLINT(*pointer-arithmetic)
-        rgb_data[i * 3 / 2 + 1] = std::clamp(g0, 0, 255); // NOLINT(*pointer-arithmetic)
-        rgb_data[i * 3 / 2 + 2] = std::clamp(b0, 0, 255); // NOLINT(*pointer-arithmetic)
-        rgb_data[i * 3 / 2 + 3] = std::clamp(r1, 0, 255); // NOLINT(*pointer-arithmetic)
-        rgb_data[i * 3 / 2 + 4] = std::clamp(g1, 0, 255); // NOLINT(*pointer-arithmetic)
-        rgb_data[i * 3 / 2 + 5] = std::clamp(b1, 0, 255); // NOLINT(*pointer-arithmetic)
+        rgb_data[i * 3 / 2 + 0] = static_cast<uint8_t>(std::clamp(r0, 0, 255)); // NOLINT(*pointer-arithmetic)
+        rgb_data[i * 3 / 2 + 1] = static_cast<uint8_t>(std::clamp(g0, 0, 255)); // NOLINT(*pointer-arithmetic)
+        rgb_data[i * 3 / 2 + 2] = static_cast<uint8_t>(std::clamp(b0, 0, 255)); // NOLINT(*pointer-arithmetic)
+        rgb_data[i * 3 / 2 + 3] = static_cast<uint8_t>(std::clamp(r1, 0, 255)); // NOLINT(*pointer-arithmetic)
+        rgb_data[i * 3 / 2 + 4] = static_cast<uint8_t>(std::clamp(g1, 0, 255)); // NOLINT(*pointer-arithmetic)
+        rgb_data[i * 3 / 2 + 5] = static_cast<uint8_t>(std::clamp(b1, 0, 255)); // NOLINT(*pointer-arithmetic)
     }
 
     return std::shared_ptr<uint8_t const>{rgb_data};
