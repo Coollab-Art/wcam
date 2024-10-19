@@ -176,13 +176,11 @@ static auto is_supported_pixel_format(uint32_t format) -> bool
 static auto select_pixel_format(int webcam_handle, Resolution resolution) -> uint32_t
 {
     auto format_desc = v4l2_fmtdesc{};
-    memset(&format_desc, 0, sizeof(format_desc));
     format_desc.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 
     for (format_desc.index = 0; ioctl(webcam_handle, VIDIOC_ENUM_FMT, &format_desc) == 0; format_desc.index++)
     {
-        auto frame_size = v4l2_frmsizeenum{};
-        memset(&frame_size, 0, sizeof(frame_size));
+        auto frame_size         = v4l2_frmsizeenum{};
         frame_size.pixel_format = format_desc.pixelformat;
 
         for (frame_size.index = 0; ioctl(webcam_handle, VIDIOC_ENUM_FRAMESIZES, &frame_size) == 0; frame_size.index++)
@@ -207,18 +205,16 @@ CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
         throw CaptureException{Error_WebcamUnplugged{}};
     _pixel_format = select_pixel_format(_webcam_handle, resolution);
 
-    struct v4l2_format fmt;
-    memset(&fmt, 0, sizeof(fmt));
-    fmt.type                = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    fmt.fmt.pix.width       = _resolution.width();
-    fmt.fmt.pix.height      = _resolution.height();
-    fmt.fmt.pix.pixelformat = _pixel_format;
-    fmt.fmt.pix.field       = V4L2_FIELD_NONE;
+    auto format                = v4l2_format{};
+    format.type                = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    format.fmt.pix.width       = _resolution.width();
+    format.fmt.pix.height      = _resolution.height();
+    format.fmt.pix.pixelformat = _pixel_format;
+    format.fmt.pix.field       = V4L2_FIELD_NONE;
 
-    THROW_IF_ERR(ioctl(_webcam_handle, VIDIOC_S_FMT, &fmt));
+    THROW_IF_ERR(ioctl(_webcam_handle, VIDIOC_S_FMT, &format));
 
-    struct v4l2_requestbuffers req;
-    memset(&req, 0, sizeof(req));
+    auto req   = v4l2_requestbuffers{};
     req.count  = 6;
     req.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     req.memory = V4L2_MEMORY_MMAP;
@@ -228,8 +224,7 @@ CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
     _buffers.resize(req.count);
     for (size_t i = 0; i < req.count; ++i)
     {
-        struct v4l2_buffer buf;
-        memset(&buf, 0, sizeof(buf));
+        auto buf   = v4l2_buffer{};
         buf.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         buf.memory = V4L2_MEMORY_MMAP;
         buf.index  = i;
@@ -245,8 +240,7 @@ CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
     }
     for (size_t i = 0; i < _buffers.size(); ++i)
     {
-        struct v4l2_buffer buf;
-        memset(&buf, 0, sizeof(buf));
+        auto buf   = v4l2_buffer{};
         buf.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         buf.memory = V4L2_MEMORY_MMAP;
         buf.index  = i;
@@ -313,8 +307,7 @@ static void mjpeg_to_rgb(Buffer buffer, unsigned char* rgb_data)
 
 void CaptureImpl::process_next_image()
 {
-    struct v4l2_buffer buf;
-    memset(&buf, 0, sizeof(buf));
+    auto buf = v4l2_buffer{};
 
     buf.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     buf.memory = V4L2_MEMORY_MMAP;
