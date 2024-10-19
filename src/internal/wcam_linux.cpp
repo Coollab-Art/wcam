@@ -115,7 +115,7 @@ static auto find_webcam_name(int webcam_handle) -> std::string
     return reinterpret_cast<const char*>(cap.card); // NOLINT(*-pro-type-reinterpret-cast)
 }
 
-static auto find_available_resolutions(int webcam_handle) -> std::vector<Resolution>
+static auto find_resolutions(int webcam_handle) -> std::vector<Resolution>
 {
     auto resolutions = std::vector<Resolution>{};
 
@@ -148,31 +148,32 @@ static auto find_available_resolutions(int webcam_handle) -> std::vector<Resolut
 
 auto grab_all_infos_impl() -> std::vector<Info>
 {
-    std::vector<Info> list_webcam_info{};
+    auto infos = std::vector<Info>{};
 
     for_each_webcam_path([&](std::filesystem::path const& webcam_path) {
-        int const video_device = open(webcam_path.string().c_str(), O_RDONLY);
-        if (video_device == -1)
+        int const webcam_handle = open(webcam_path.string().c_str(), O_RDONLY);
+        if (webcam_handle == -1)
             return;
-        auto const scope_guard = FileRAII{video_device};
+        auto const scope_guard = FileRAII{webcam_handle};
 
-        std::vector<Resolution> const available_resolutions = find_available_resolutions(video_device);
-        if (available_resolutions.empty())
+        auto const resolutions = find_resolutions(webcam_handle);
+        if (resolutions.empty())
             return;
 
-        list_webcam_info.push_back({find_webcam_name(video_device), webcam_id(webcam_path), available_resolutions});
+        infos.push_back({find_webcam_name(webcam_handle), webcam_id(webcam_path), resolutions});
     });
 
-    return list_webcam_info;
+    return infos;
 }
 
+/// The list of formats we support for now. We will add more when the need arises.
 static auto is_supported_format(uint32_t format) -> bool
 {
     return format == V4L2_PIX_FMT_MJPEG
            || format == V4L2_PIX_FMT_YUYV;
 }
 
-auto select_pixel_format(int fd, int width, int height) -> uint32_t
+static auto select_pixel_format(int fd, int width, int height) -> uint32_t
 {
     struct v4l2_fmtdesc     fmt;
     struct v4l2_frmsizeenum frmsize;
