@@ -42,7 +42,7 @@ static auto hr_to_string(HRESULT hr) -> std::string
     FormatMessage(
         FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
         nullptr,
-        hr,
+        static_cast<DWORD>(hr),
         MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US),
         reinterpret_cast<LPSTR>(&error_message), // NOLINT(*reinterpret-cast)
         0,
