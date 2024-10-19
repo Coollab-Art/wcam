@@ -62,40 +62,33 @@ static void throw_error(std::string const& err, std::string_view code_that_faile
 
 static auto find_available_resolutions(int const video_device) -> std::vector<Resolution>
 {
-    std::vector<Resolution> available_resolutions;
+    auto resolutions = std::vector<Resolution>{};
 
-    v4l2_fmtdesc format_description{};
+    auto format_description = v4l2_fmtdesc{};
     format_description.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    while (ioctl(video_device, VIDIOC_ENUM_FMT, &format_description) == 0)
+    for (; ioctl(video_device, VIDIOC_ENUM_FMT, &format_description) == 0; format_description.index++)
     {
-        v4l2_frmsizeenum frame_size{};
+        auto frame_size         = v4l2_frmsizeenum{};
         frame_size.pixel_format = format_description.pixelformat;
-        while (ioctl(video_device, VIDIOC_ENUM_FRAMESIZES, &frame_size) == 0)
+        for (; ioctl(video_device, VIDIOC_ENUM_FRAMESIZES, &frame_size) == 0; frame_size.index++)
         {
-            v4l2_frmivalenum frame_interval{};
+            if (frame_size.type != V4L2_FRMSIZE_TYPE_DISCRETE)
+                continue;
+            auto frame_interval         = v4l2_frmivalenum{};
             frame_interval.pixel_format = format_description.pixelformat;
             frame_interval.width        = frame_size.discrete.width;
             frame_interval.height       = frame_size.discrete.height;
 
-            while (ioctl(video_device, VIDIOC_ENUM_FRAMEINTERVALS, &frame_interval) == 0)
+            for (; ioctl(video_device, VIDIOC_ENUM_FRAMEINTERVALS, &frame_interval) == 0; frame_interval.index++)
             {
-                if (frame_interval.type == V4L2_FRMIVAL_TYPE_DISCRETE)
-                {
-                    // float fps = static_cast<float>(frameInterval.discrete.denominator) / static_cast<float>(frameInterval.discrete.numerator);
-                    if (/*fps > 29. &&*/ frame_size.type == V4L2_FRMSIZE_TYPE_DISCRETE)
-                    {
-                        available_resolutions.push_back({static_cast<Resolution::DataType>(frame_interval.width), static_cast<Resolution::DataType>(frame_interval.height)});
-                    }
-                }
-                frame_interval.index++;
+                if (frame_interval.type != V4L2_FRMIVAL_TYPE_DISCRETE)
+                    continue;
+                resolutions.emplace_back(static_cast<Resolution::DataType>(frame_interval.width), static_cast<Resolution::DataType>(frame_interval.height));
             }
-            frame_size.index++;
         }
-
-        format_description.index++;
     }
 
-    return available_resolutions;
+    return resolutions;
 }
 
 class CloseFileAtExit {
