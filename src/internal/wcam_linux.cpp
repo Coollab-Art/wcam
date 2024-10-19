@@ -307,36 +307,35 @@ static void mjpeg_to_rgb(Buffer buffer, unsigned char* rgb_data)
 
 void CaptureImpl::process_next_image()
 {
-    auto buf = v4l2_buffer{};
+    try
+    {
+        auto buf   = v4l2_buffer{};
+        buf.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        buf.memory = V4L2_MEMORY_MMAP;
 
-    buf.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    buf.memory = V4L2_MEMORY_MMAP;
+        THROW_IF_ERR(ioctl(_webcam_handle, VIDIOC_DQBUF, &buf)); // Blocks until a new frame is available
+        auto image = image_factory().make_image();
 
-    if (ioctl(_webcam_handle, VIDIOC_DQBUF, &buf) == -1) // Blocks until a new frame is available
-    {
-        perror("Failed to dequeue buffer");
-        // return false;
+        if (_pixel_format == V4L2_PIX_FMT_YUYV)
+        {
+            image->set_data(ImageDataView<YUYV>{static_cast<unsigned char*>(_buffers[buf.index].ptr), _buffers[buf.index].size, _resolution, wcam::FirstRowIs::Top});
+        }
+        else if (_pixel_format == V4L2_PIX_FMT_MJPEG)
+        {
+            auto* const rgb_data = new uint8_t[_resolution.pixels_count() * 3]; // NOLINT(*owning-memory)
+            mjpeg_to_rgb(_buffers[buf.index], rgb_data);
+            image->set_data(ImageDataView<RGB24>{std::shared_ptr<uint8_t>{rgb_data}, _resolution.pixels_count() * 3, _resolution, wcam::FirstRowIs::Top});
+        }
+        else
+        {
+            assert(false && "Unsupported pixel format");
+        };
+        set_image(std::move(image));
+        THROW_IF_ERR(ioctl(_webcam_handle, VIDIOC_QBUF, &buf));
     }
-    auto image = image_factory().make_image();
-
-    if (_pixel_format == V4L2_PIX_FMT_YUYV)
+    catch (CaptureException const& e)
     {
-        image->set_data(ImageDataView<YUYV>{static_cast<unsigned char*>(_buffers[buf.index].ptr), _buffers[buf.index].size, _resolution, wcam::FirstRowIs::Top});
-    }
-    else if (_pixel_format == V4L2_PIX_FMT_MJPEG)
-    {
-        auto* const rgb_data = new uint8_t[_resolution.pixels_count() * 3]; // NOLINT(*owning-memory)
-        mjpeg_to_rgb(_buffers[buf.index], rgb_data);
-        image->set_data(ImageDataView<RGB24>{std::shared_ptr<uint8_t>{rgb_data}, _resolution.pixels_count() * 3, _resolution, wcam::FirstRowIs::Top});
-    }
-    else
-    {
-        assert(false);
-    };
-    set_image(std::move(image));
-    if (ioctl(_webcam_handle, VIDIOC_QBUF, &buf) == -1)
-    {
-        perror("Failed to queue buffer");
+        set_image(e.capture_error);
     }
 }
 
