@@ -91,6 +91,28 @@ static auto find_available_resolutions(int const video_device) -> std::vector<Re
     return resolutions;
 }
 
+static auto for_each_webcam_path(std::function<void(std::filesystem::path const& webcam_path)> const& callback)
+{
+    try
+    {
+        for (auto const& entry : std::filesystem::directory_iterator("/dev/v4l/by-id"))
+            callback(entry.path());
+    }
+    catch (std::exception const&)
+    {
+    }
+}
+
+static auto webcam_path(DeviceId const& id) -> std::string
+{
+    return "/dev/v4l/by-id/" + id.as_string();
+}
+
+static auto webcam_id(std::filesystem::path const& webcam_path) -> DeviceId
+{
+    return make_device_id(webcam_path.filename());
+}
+
 class FileRAII {
 public:
     FileRAII(FileRAII const&)            = delete;
@@ -111,18 +133,6 @@ private:
     int _file_handle{};
 };
 
-static auto for_each_webcam_id_path(std::function<void(std::filesystem::path const& webcam_id_path)> const& callback)
-{
-    try
-    {
-        for (auto const& entry : std::filesystem::directory_iterator("/dev/v4l/by-id"))
-            callback(entry.path());
-    }
-    catch (std::exception const&)
-    {
-    }
-}
-
 static auto get_webcam_name(int video_device) -> std::string
 {
     v4l2_capability cap{};
@@ -135,17 +145,12 @@ static auto get_webcam_name(int video_device) -> std::string
     return reinterpret_cast<char const*>(cap.card); // NOLINT(*-pro-type-reinterpret-cast)
 }
 
-static auto get_webcam_id(std::filesystem::path const& webcam_id_path) -> DeviceId
-{
-    return make_device_id(webcam_id_path.filename());
-}
-
 auto grab_all_infos_impl() -> std::vector<Info>
 {
     std::vector<Info> list_webcam_info{};
 
-    for_each_webcam_id_path([&](std::filesystem::path const& webcam_id_path) {
-        int const video_device = open(webcam_id_path.string().c_str(), O_RDONLY);
+    for_each_webcam_path([&](std::filesystem::path const& webcam_path) {
+        int const video_device = open(webcam_path.string().c_str(), O_RDONLY);
         if (video_device == -1)
             return;
         auto const scope_guard = FileRAII{video_device};
@@ -154,7 +159,7 @@ auto grab_all_infos_impl() -> std::vector<Info>
         if (available_resolutions.empty())
             return;
 
-        list_webcam_info.push_back({get_webcam_name(video_device), get_webcam_id(webcam_id_path), available_resolutions});
+        list_webcam_info.push_back({get_webcam_name(video_device), webcam_id(webcam_path), available_resolutions});
     });
 
     return list_webcam_info;
@@ -201,26 +206,8 @@ auto select_pixel_format(int fd, int width, int height) -> uint32_t
     throw CaptureException{Error_Unknown{"Unsupported pixel format"}}; // TODO list the supported formats
 }
 
-static auto find_webcam_path(DeviceId const& id) -> std::string
-{
-    return "/dev/v4l/by-id/" + id.as_string();
-    // std::string path{};
-    // for_each_webcam_id_path([&](const char* webcam_id_path) {
-    // int const video_device = open(webcam_id_path, O_RDONLY);
-    // if (video_device == -1)
-    //     return;
-    // auto const scope_guard = CloseFileAtExit{video_device};
-    //     if (get_webcam_id(webcam_id_path) == id)
-    //         path = webcam_id_path;
-    // });
-    // if (path.empty())
-    //     throw CaptureException{Error_WebcamUnplugged{}};
-    // std::cout << path << '\n';
-    // return path;
-}
-
 CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
-    : _webcam_handle{open(find_webcam_path(id).c_str(), O_RDWR)}
+    : _webcam_handle{open(webcam_path(id).c_str(), O_RDWR)}
     , _resolution{resolution}
 {
     if (_webcam_handle == -1)
