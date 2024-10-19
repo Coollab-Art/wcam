@@ -61,6 +61,12 @@ static void throw_error(std::string const& err, std::string_view code_that_faile
             throw_error(errno_to_string(errno), #exp); \
     }
 
+#define THROW_IF(exp) /*NOLINT(*macro*)*/              \
+    {                                                  \
+        if (exp)                                       \
+            throw_error(errno_to_string(errno), #exp); \
+    }
+
 static auto for_each_webcam_path(std::function<void(std::filesystem::path const& webcam_path)> const& callback)
 {
     try
@@ -205,7 +211,7 @@ CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
         throw CaptureException{Error_WebcamUnplugged{}};
     _pixel_format = select_pixel_format(_webcam_handle, resolution);
 
-    { // Request desired format and size
+    {
         auto format                = v4l2_format{};
         format.type                = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         format.fmt.pix.width       = _resolution.width();
@@ -229,22 +235,22 @@ CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
         auto buf   = v4l2_buffer{};
         buf.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         buf.memory = V4L2_MEMORY_MMAP;
-        buf.index  = i;
+        buf.index  = static_cast<unsigned int>(i);
 
         THROW_IF_ERR(ioctl(_webcam_handle, VIDIOC_QUERYBUF, &buf));
 
         _buffers[i].size = buf.length;
-        _buffers[i].ptr  = mmap(NULL, buf.length, PROT_READ | PROT_WRITE, MAP_SHARED, _webcam_handle, buf.m.offset);
-        if (_buffers[i].ptr == MAP_FAILED)
-        {
-            perror("Failed to map buffer");
-        }
+        _buffers[i].ptr  = mmap(nullptr, buf.length, PROT_READ | PROT_WRITE, MAP_SHARED, _webcam_handle, buf.m.offset);
+        THROW_IF(_buffers[i].ptr == MAP_FAILED);
         THROW_IF_ERR(ioctl(_webcam_handle, VIDIOC_QBUF, &buf));
     }
 
-    enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    THROW_IF_ERR(ioctl(_webcam_handle, VIDIOC_STREAMON, &type));
+    {
+        v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        THROW_IF_ERR(ioctl(_webcam_handle, VIDIOC_STREAMON, &type));
+    }
 
+    // Start the thread once all the buffers are ready
     _thread = std::thread{&CaptureImpl::thread_job, std::ref(*this)};
 }
 
