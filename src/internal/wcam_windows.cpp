@@ -2,7 +2,7 @@
 #include "wcam_windows.hpp"
 #include <fmt/format.h>
 #include <cstdlib>
-#include <source_location>
+#include <source_location/source_location.hpp>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -53,7 +53,7 @@ static auto hr_to_string(HRESULT hr) -> std::string
     return message;
 }
 
-static void throw_error(HRESULT hr, std::string_view code_that_failed, std::source_location location = std::source_location::current())
+static void throw_error(HRESULT hr, std::string_view code_that_failed, nostd::source_location location = nostd::source_location::current())
 {
     throw CaptureException{Error_Unknown{fmt::format("{}(During `{}`, at {}({}:{}))", hr_to_string(hr), code_that_failed, location.file_name(), location.line(), location.column())}};
 }
@@ -87,7 +87,7 @@ public:
     explicit AutoRelease(T* ptr)
         : _ptr{ptr}
     {}
-    explicit AutoRelease(REFCLSID class_id, std::source_location location = std::source_location::current())
+    explicit AutoRelease(REFCLSID class_id, nostd::source_location location = nostd::source_location::current())
     {
         THROW_IF_ERR2(CoCreateInstance(class_id, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&_ptr)), location);
     }
