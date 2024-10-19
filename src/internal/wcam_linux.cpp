@@ -60,37 +60,6 @@ static void throw_error(std::string const& err, std::string_view code_that_faile
             throw_error(errno_to_string(errno), #exp); \
     }
 
-static auto find_available_resolutions(int const video_device) -> std::vector<Resolution>
-{
-    auto resolutions = std::vector<Resolution>{};
-
-    auto format_description = v4l2_fmtdesc{};
-    format_description.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    for (; ioctl(video_device, VIDIOC_ENUM_FMT, &format_description) == 0; format_description.index++)
-    {
-        auto frame_size         = v4l2_frmsizeenum{};
-        frame_size.pixel_format = format_description.pixelformat;
-        for (; ioctl(video_device, VIDIOC_ENUM_FRAMESIZES, &frame_size) == 0; frame_size.index++)
-        {
-            if (frame_size.type != V4L2_FRMSIZE_TYPE_DISCRETE)
-                continue;
-            auto frame_interval         = v4l2_frmivalenum{};
-            frame_interval.pixel_format = format_description.pixelformat;
-            frame_interval.width        = frame_size.discrete.width;
-            frame_interval.height       = frame_size.discrete.height;
-
-            for (; ioctl(video_device, VIDIOC_ENUM_FRAMEINTERVALS, &frame_interval) == 0; frame_interval.index++)
-            {
-                if (frame_interval.type != V4L2_FRMIVAL_TYPE_DISCRETE)
-                    continue;
-                resolutions.emplace_back(static_cast<Resolution::DataType>(frame_interval.width), static_cast<Resolution::DataType>(frame_interval.height));
-            }
-        }
-    }
-
-    return resolutions;
-}
-
 static auto for_each_webcam_path(std::function<void(std::filesystem::path const& webcam_path)> const& callback)
 {
     try
@@ -133,16 +102,47 @@ private:
     int _file_handle{};
 };
 
-static auto get_webcam_name(int video_device) -> std::string
+static auto find_webcam_name(int webcam_handle) -> std::string
 {
     v4l2_capability cap{};
-    if (ioctl(video_device, VIDIOC_QUERYCAP, &cap) == -1)
+    if (ioctl(webcam_handle, VIDIOC_QUERYCAP, &cap) == -1)
         return "";
 
     if (!(cap.capabilities & V4L2_CAP_VIDEO_CAPTURE))
         return "";
 
     return reinterpret_cast<char const*>(cap.card); // NOLINT(*-pro-type-reinterpret-cast)
+}
+
+static auto find_available_resolutions(int webcam_handle) -> std::vector<Resolution>
+{
+    auto resolutions = std::vector<Resolution>{};
+
+    auto format_description = v4l2_fmtdesc{};
+    format_description.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    for (; ioctl(webcam_handle, VIDIOC_ENUM_FMT, &format_description) == 0; format_description.index++)
+    {
+        auto frame_size         = v4l2_frmsizeenum{};
+        frame_size.pixel_format = format_description.pixelformat;
+        for (; ioctl(webcam_handle, VIDIOC_ENUM_FRAMESIZES, &frame_size) == 0; frame_size.index++)
+        {
+            if (frame_size.type != V4L2_FRMSIZE_TYPE_DISCRETE)
+                continue;
+            auto frame_interval         = v4l2_frmivalenum{};
+            frame_interval.pixel_format = format_description.pixelformat;
+            frame_interval.width        = frame_size.discrete.width;
+            frame_interval.height       = frame_size.discrete.height;
+
+            for (; ioctl(webcam_handle, VIDIOC_ENUM_FRAMEINTERVALS, &frame_interval) == 0; frame_interval.index++)
+            {
+                if (frame_interval.type != V4L2_FRMIVAL_TYPE_DISCRETE)
+                    continue;
+                resolutions.emplace_back(static_cast<Resolution::DataType>(frame_interval.width), static_cast<Resolution::DataType>(frame_interval.height));
+            }
+        }
+    }
+
+    return resolutions;
 }
 
 auto grab_all_infos_impl() -> std::vector<Info>
@@ -159,7 +159,7 @@ auto grab_all_infos_impl() -> std::vector<Info>
         if (available_resolutions.empty())
             return;
 
-        list_webcam_info.push_back({get_webcam_name(video_device), webcam_id(webcam_path), available_resolutions});
+        list_webcam_info.push_back({find_webcam_name(video_device), webcam_id(webcam_path), available_resolutions});
     });
 
     return list_webcam_info;
