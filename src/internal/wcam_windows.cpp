@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include "../Info.hpp"
 #include "ImageFactory.hpp"
+#include "fallback_webcam_name.hpp"
 #include "make_device_id.hpp"
 
 /// NB: we use DirectShow and not MediaFoundation
@@ -217,12 +218,12 @@ static void CoInitializeIFN()
 static auto get_webcam_name(IMoniker* moniker) -> std::string
 {
     auto prop_bag = AutoRelease<IPropertyBag>{};
-    ASSERT_AND_RETURN_IF_ERR(moniker->BindToStorage(nullptr, nullptr, IID_PPV_ARGS(&prop_bag)), "Unnamed webcam");
+    ASSERT_AND_RETURN_IF_ERR(moniker->BindToStorage(nullptr, nullptr, IID_PPV_ARGS(&prop_bag)), fallback_webcam_name());
 
     auto          webcam_name_wstr = VariantRAII{};
     HRESULT const hr               = prop_bag->Read(L"FriendlyName", &webcam_name_wstr, nullptr);
     if (hr == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND))
-        return "Unnamed webcam";
+        return fallback_webcam_name();
     return convert_wstr_to_str(webcam_name_wstr->bstrVal);
 }
 

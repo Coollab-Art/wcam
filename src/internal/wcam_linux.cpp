@@ -12,6 +12,7 @@
 #include <source_location>
 #include "../Info.hpp"
 #include "ImageFactory.hpp"
+#include "fallback_webcam_name.hpp"
 #include "make_device_id.hpp"
 
 namespace wcam::internal {
@@ -104,14 +105,14 @@ private:
 
 static auto find_webcam_name(int webcam_handle) -> std::string
 {
-    v4l2_capability cap{};
+    auto cap = v4l2_capability{};
     if (ioctl(webcam_handle, VIDIOC_QUERYCAP, &cap) == -1)
-        return "";
+        return fallback_webcam_name();
 
     if (!(cap.capabilities & V4L2_CAP_VIDEO_CAPTURE))
-        return "";
+        return fallback_webcam_name();
 
-    return reinterpret_cast<char const*>(cap.card); // NOLINT(*-pro-type-reinterpret-cast)
+    return reinterpret_cast<const char*>(cap.card); // NOLINT(*-pro-type-reinterpret-cast)
 }
 
 static auto find_available_resolutions(int webcam_handle) -> std::vector<Resolution>
