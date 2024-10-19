@@ -1,0 +1,1 @@
+request (or at least retrieve and show) the framerate associated to each resolution

@@ -1,5 +1,12 @@
 # wcam
 
+A simple and powerful Webcam library:
+
+- [x] cross-platform
+- [x] easy to add to your project
+- [x] easy to use
+- [x] works well (handles webcam disconnects, and reconnects as fast as possible)
+
 ## Including
 
 To add this library to your project, simply add these two lines to your *CMakeLists.txt*:
@@ -23,7 +30,18 @@ See [the documentation about this](https://developer.apple.com/documentation/bun
 
 ## Using
 
-Def your image type. You need to at least implement set_rgb_data. Implem the other if you have something more perf to do than just convert to rgb and then call your rgb func. You might at least want to implem bgr (on windows you will often receive BGR, never RGB directly)
+You need to define your own image type, and then supply it to the library by calling
+```cpp
+wcam::set_image_type<Image>();
+```
+at the beginning of your application, before you use anything from *wcam*. See the tests for more details.
+
+You image type needs to at least implement
+```cpp
+void set_data(wcam::ImageDataView<wcam::RGB24> const& rgb_data) override
+```
+You can also implement the other overloads (from BGR, YUV, etc.) if you have something smart and performant to do. Otherwise *wcam* will just convert the data to RGB and then call the RGB overload.<br/>
+You might want to at least implement BGR (on windows you will often receive BGR, never RGB directly).
 
 ## Running the tests
 
