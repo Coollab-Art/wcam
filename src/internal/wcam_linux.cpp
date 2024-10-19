@@ -167,45 +167,36 @@ auto grab_all_infos_impl() -> std::vector<Info>
 }
 
 /// The list of formats we support for now. We will add more when the need arises.
-static auto is_supported_format(uint32_t format) -> bool
+static auto is_supported_pixel_format(uint32_t format) -> bool
 {
     return format == V4L2_PIX_FMT_MJPEG
            || format == V4L2_PIX_FMT_YUYV;
 }
 
-static auto select_pixel_format(int fd, int width, int height) -> uint32_t
+static auto select_pixel_format(int webcam_handle, Resolution resolution) -> uint32_t
 {
-    struct v4l2_fmtdesc     fmt;
-    struct v4l2_frmsizeenum frmsize;
-    memset(&fmt, 0, sizeof(fmt));
-    fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    auto format_desc = v4l2_fmtdesc{};
+    memset(&format_desc, 0, sizeof(format_desc));
+    format_desc.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 
-    // Enumerate pixel formats
-    for (fmt.index = 0; ioctl(fd, VIDIOC_ENUM_FMT, &fmt) == 0; fmt.index++)
+    for (format_desc.index = 0; ioctl(webcam_handle, VIDIOC_ENUM_FMT, &format_desc) == 0; format_desc.index++)
     {
-        memset(&frmsize, 0, sizeof(frmsize));
-        frmsize.pixel_format = fmt.pixelformat;
+        auto frame_size = v4l2_frmsizeenum{};
+        memset(&frame_size, 0, sizeof(frame_size));
+        frame_size.pixel_format = format_desc.pixelformat;
 
-        // Enumerate frame sizes for this pixel format
-        for (frmsize.index = 0; ioctl(fd, VIDIOC_ENUM_FRAMESIZES, &frmsize) == 0; frmsize.index++)
+        for (frame_size.index = 0; ioctl(webcam_handle, VIDIOC_ENUM_FRAMESIZES, &frame_size) == 0; frame_size.index++)
         {
-            if (frmsize.type == V4L2_FRMSIZE_TYPE_DISCRETE)
+            if (frame_size.type == V4L2_FRMSIZE_TYPE_DISCRETE
+                && frame_size.discrete.width == resolution.width()
+                && frame_size.discrete.height == resolution.height()
+                && is_supported_pixel_format(format_desc.pixelformat))
             {
-                if (frmsize.discrete.width == width && frmsize.discrete.height == height && is_supported_format(fmt.pixelformat))
-                {
-                    return fmt.pixelformat;
-                }
+                return format_desc.pixelformat;
             }
-            // else if (frmsize.type == V4L2_FRMSIZE_TYPE_STEPWISE)
-            // {
-            //     if (frmsize.stepwise.min_width <= width && frmsize.stepwise.max_width >= width && frmsize.stepwise.min_height <= height && frmsize.stepwise.max_height >= height)
-            //     {
-            //         printf("  - Pixel format: %s (0x%08x)\n", fmt.description, fmt.pixelformat);
-            //     }
-            // }
         }
     }
-    throw CaptureException{Error_Unknown{"Unsupported pixel format"}}; // TODO list the supported formats
+    throw CaptureException{Error_Unknown{"Unsupported pixel format"}};
 }
 
 CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
@@ -214,7 +205,7 @@ CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
 {
     if (_webcam_handle == -1)
         throw CaptureException{Error_WebcamUnplugged{}};
-    _pixel_format = select_pixel_format(_webcam_handle, resolution.width(), resolution.height());
+    _pixel_format = select_pixel_format(_webcam_handle, resolution);
 
     struct v4l2_format fmt;
     memset(&fmt, 0, sizeof(fmt));
