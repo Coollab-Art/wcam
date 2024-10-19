@@ -33,14 +33,17 @@ if(WARNINGS_AS_ERRORS_FOR_WCAM)
 endif()
 
 # ---fmt library---
-include(FetchContent)
-FetchContent_Declare(
-    fmt
-    GIT_REPOSITORY https://github.com/fmtlib/fmt
-    GIT_TAG 11.0.2
-    SYSTEM
-)
-FetchContent_MakeAvailable(fmt)
+if(NOT WCAM_DONT_INCLUDE_FMT)
+    include(FetchContent)
+    FetchContent_Declare(
+        fmt
+        GIT_REPOSITORY https://github.com/fmtlib/fmt
+        GIT_TAG 11.0.2
+        SYSTEM
+    )
+    FetchContent_MakeAvailable(fmt)
+endif()
+
 target_link_libraries(wcam PRIVATE fmt::fmt)
 
 # ---source_location library---
