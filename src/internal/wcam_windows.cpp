@@ -48,6 +48,8 @@ static auto hr_to_string(HRESULT hr) -> std::string
         0,
         nullptr
     );
+    if (error_message == nullptr)
+        return "UNKOWN\n";
     auto message = std::string{error_message};
     LocalFree(error_message);
     return message;
