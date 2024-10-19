@@ -89,26 +89,6 @@ static auto webcam_id(std::filesystem::path const& webcam_path) -> DeviceId
     return make_device_id(webcam_path.filename());
 }
 
-class FileRAII {
-public:
-    FileRAII(FileRAII const&)            = delete;
-    FileRAII& operator=(FileRAII const&) = delete;
-    FileRAII(FileRAII&&)                 = delete;
-    FileRAII& operator=(FileRAII&&)      = delete;
-
-    explicit FileRAII(int file_handle)
-        : _file_handle{file_handle}
-    {}
-
-    ~FileRAII()
-    {
-        close(_file_handle);
-    }
-
-private:
-    int _file_handle{};
-};
-
 static auto find_webcam_name(int webcam_handle) -> std::string
 {
     auto cap = v4l2_capability{};
@@ -203,6 +183,18 @@ static auto select_pixel_format(int webcam_handle, Resolution resolution) -> uin
     throw CaptureException{Error_Unknown{"Unsupported pixel format"}};
 }
 
+Buffer::~Buffer()
+{
+    if (ptr != nullptr && ptr != MAP_FAILED)
+    {
+        if (munmap(ptr, size) == -1)
+        {
+            perror("Failed to unmap buffer");
+            assert(false);
+        }
+    }
+}
+
 CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
     : _webcam_handle{open(webcam_path(id).c_str(), O_RDWR)}
     , _resolution{resolution}
@@ -223,11 +215,10 @@ CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
 
     {
         auto req   = v4l2_requestbuffers{};
-        req.count  = 6; // This seems like a nice number that gives us good performance
+        req.count  = static_cast<unsigned int>(_buffers.size());
         req.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         req.memory = V4L2_MEMORY_MMAP;
         THROW_IF_ERR(ioctl(_webcam_handle, VIDIOC_REQBUFS, &req));
-        _buffers.resize(req.count);
     }
 
     for (size_t i = 0; i < _buffers.size(); ++i)
@@ -239,9 +230,9 @@ CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
 
         THROW_IF_ERR(ioctl(_webcam_handle, VIDIOC_QUERYBUF, &buf));
 
-        _buffers[i].size = buf.length;
-        _buffers[i].ptr  = mmap(nullptr, buf.length, PROT_READ | PROT_WRITE, MAP_SHARED, _webcam_handle, buf.m.offset);
-        THROW_IF(_buffers[i].ptr == MAP_FAILED);
+        _buffers[i].size = buf.length;                                                                                  // NOLINT(*constant-array-index)
+        _buffers[i].ptr  = mmap(nullptr, buf.length, PROT_READ | PROT_WRITE, MAP_SHARED, _webcam_handle, buf.m.offset); // NOLINT(*constant-array-index)
+        THROW_IF(_buffers[i].ptr == MAP_FAILED);                                                                        // NOLINT(*constant-array-index)
         THROW_IF_ERR(ioctl(_webcam_handle, VIDIOC_QBUF, &buf));
     }
 
@@ -259,21 +250,11 @@ CaptureImpl::~CaptureImpl()
     _wants_to_stop_thread.store(true);
     _thread.join();
 
-    enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     if (ioctl(_webcam_handle, VIDIOC_STREAMOFF, &type) == -1)
     {
         perror("Failed to stop capture");
-    }
-    for (size_t i = 0; i < _buffers.size(); ++i)
-    {
-        if (munmap(_buffers[i].ptr, _buffers[i].size) == -1)
-        {
-            perror("Failed to unmap buffer");
-        }
-    }
-    if (close(_webcam_handle) == -1)
-    {
-        perror("Failed to close device");
+        assert(false);
     }
 }
 
@@ -283,7 +264,7 @@ void CaptureImpl::thread_job(CaptureImpl& This)
         This.process_next_image();
 }
 
-static void mjpeg_to_rgb(Buffer buffer, unsigned char* rgb_data)
+static void mjpeg_to_rgb(Buffer const& buffer, unsigned char* rgb_data)
 {
     struct jpeg_decompress_struct info; // NOLINT(*member-init)
     struct jpeg_error_mgr         err;  // NOLINT(*member-init)
