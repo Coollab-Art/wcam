@@ -205,24 +205,26 @@ CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
         throw CaptureException{Error_WebcamUnplugged{}};
     _pixel_format = select_pixel_format(_webcam_handle, resolution);
 
-    auto format                = v4l2_format{};
-    format.type                = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    format.fmt.pix.width       = _resolution.width();
-    format.fmt.pix.height      = _resolution.height();
-    format.fmt.pix.pixelformat = _pixel_format;
-    format.fmt.pix.field       = V4L2_FIELD_NONE;
+    { // Request desired format and size
+        auto format                = v4l2_format{};
+        format.type                = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        format.fmt.pix.width       = _resolution.width();
+        format.fmt.pix.height      = _resolution.height();
+        format.fmt.pix.pixelformat = _pixel_format;
+        format.fmt.pix.field       = V4L2_FIELD_NONE;
+        THROW_IF_ERR(ioctl(_webcam_handle, VIDIOC_S_FMT, &format));
+    }
 
-    THROW_IF_ERR(ioctl(_webcam_handle, VIDIOC_S_FMT, &format));
+    {
+        auto req   = v4l2_requestbuffers{};
+        req.count  = 6; // This seems like a nice number that gives us good performance
+        req.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        req.memory = V4L2_MEMORY_MMAP;
+        THROW_IF_ERR(ioctl(_webcam_handle, VIDIOC_REQBUFS, &req));
+        _buffers.resize(req.count);
+    }
 
-    auto req   = v4l2_requestbuffers{};
-    req.count  = 6;
-    req.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    req.memory = V4L2_MEMORY_MMAP;
-
-    THROW_IF_ERR(ioctl(_webcam_handle, VIDIOC_REQBUFS, &req));
-
-    _buffers.resize(req.count);
-    for (size_t i = 0; i < req.count; ++i)
+    for (size_t i = 0; i < _buffers.size(); ++i)
     {
         auto buf   = v4l2_buffer{};
         buf.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
@@ -237,14 +239,6 @@ CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
         {
             perror("Failed to map buffer");
         }
-    }
-    for (size_t i = 0; i < _buffers.size(); ++i)
-    {
-        auto buf   = v4l2_buffer{};
-        buf.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        buf.memory = V4L2_MEMORY_MMAP;
-        buf.index  = i;
-
         THROW_IF_ERR(ioctl(_webcam_handle, VIDIOC_QBUF, &buf));
     }
 
