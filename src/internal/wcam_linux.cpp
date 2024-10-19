@@ -91,29 +91,32 @@ static auto find_available_resolutions(int const video_device) -> std::vector<Re
     return resolutions;
 }
 
-class CloseFileAtExit {
+class FileRAII {
 public:
-    explicit CloseFileAtExit(int file_descriptor)
-        : _file_descriptor{file_descriptor}
+    FileRAII(FileRAII const&)            = delete;
+    FileRAII& operator=(FileRAII const&) = delete;
+    FileRAII(FileRAII&&)                 = delete;
+    FileRAII& operator=(FileRAII&&)      = delete;
+
+    explicit FileRAII(int file_handle)
+        : _file_handle{file_handle}
     {}
 
-    ~CloseFileAtExit()
+    ~FileRAII()
     {
-        close(_file_descriptor);
+        close(_file_handle);
     }
 
 private:
-    int _file_descriptor{};
+    int _file_handle{};
 };
 
-static auto for_each_webcam_id_path(std::function<void(const char* webcam_id_path)> const& callback)
+static auto for_each_webcam_id_path(std::function<void(std::filesystem::path const& webcam_id_path)> const& callback)
 {
     try
     {
         for (auto const& entry : std::filesystem::directory_iterator("/dev/v4l/by-id"))
-        {
-            callback(entry.path().string().c_str());
-        }
+            callback(entry.path());
     }
     catch (std::exception const&)
     {
@@ -132,20 +135,20 @@ static auto get_webcam_name(int video_device) -> std::string
     return reinterpret_cast<char const*>(cap.card); // NOLINT(*-pro-type-reinterpret-cast)
 }
 
-static auto get_webcam_id(const char* webcam_id_path) -> DeviceId
+static auto get_webcam_id(std::filesystem::path const& webcam_id_path) -> DeviceId
 {
-    return make_device_id(std::filesystem::path{webcam_id_path}.filename());
+    return make_device_id(webcam_id_path.filename());
 }
 
 auto grab_all_infos_impl() -> std::vector<Info>
 {
     std::vector<Info> list_webcam_info{};
 
-    for_each_webcam_id_path([&](const char* webcam_id_path) {
-        int const video_device = open(webcam_id_path, O_RDONLY);
+    for_each_webcam_id_path([&](std::filesystem::path const& webcam_id_path) {
+        int const video_device = open(webcam_id_path.string().c_str(), O_RDONLY);
         if (video_device == -1)
             return;
-        auto const scope_guard = CloseFileAtExit{video_device};
+        auto const scope_guard = FileRAII{video_device};
 
         std::vector<Resolution> const available_resolutions = find_available_resolutions(video_device);
         if (available_resolutions.empty())
