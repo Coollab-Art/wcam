@@ -1,7 +1,7 @@
 #if defined(_WIN32)
 #include "wcam_windows.hpp"
+#include <fmt/format.h>
 #include <cstdlib>
-#include <format>
 #include <source_location>
 #include <string>
 #include <string_view>
@@ -55,7 +55,7 @@ static auto hr_to_string(HRESULT hr) -> std::string
 
 static void throw_error(HRESULT hr, std::string_view code_that_failed, std::source_location location = std::source_location::current())
 {
-    throw CaptureException{Error_Unknown{std::format("{}(During `{}`, at {}({}:{}))", hr_to_string(hr), code_that_failed, location.file_name(), location.line(), location.column())}};
+    throw CaptureException{Error_Unknown{fmt::format("{}(During `{}`, at {}({}:{}))", hr_to_string(hr), code_that_failed, location.file_name(), location.line(), location.column())}};
 }
 
 #define THROW_IF_ERR(exp) /*NOLINT(*macro*)*/ \

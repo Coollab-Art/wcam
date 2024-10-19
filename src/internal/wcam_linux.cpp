@@ -1,13 +1,13 @@
 #if defined(__linux__)
 #include "wcam_linux.hpp"
 #include <fcntl.h>
+#include <fmt/format.h>
 #include <jpeglib.h>
 #include <linux/videodev2.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <cstring>
 #include <filesystem>
-#include <format>
 #include <functional>
 #include <source_location>
 #include "../Info.hpp"
@@ -51,7 +51,7 @@ static void throw_error(std::string const& err, std::string_view code_that_faile
 {
     if (errno == 16)
         throw CaptureException{Error_WebcamAlreadyUsedInAnotherApplication{}};
-    throw CaptureException{Error_Unknown{std::format("{}\n(During `{}`, at {}({}:{}))", err, code_that_failed, location.file_name(), location.line(), location.column())}};
+    throw CaptureException{Error_Unknown{fmt::format("{}\n(During `{}`, at {}({}:{}))", err, code_that_failed, location.file_name(), location.line(), location.column())}};
 }
 
 #define THROW_IF_ERR(exp) /*NOLINT(*macro*)*/          \
