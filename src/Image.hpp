@@ -73,9 +73,9 @@ public:
         return std::visit(
             overloaded{
                 [&](uint8_t const* data) {
-                    auto* res = new uint8_t[PixelFormatT::data_length(_resolution)]; // NOLINT(*owning-memory)
-                    memcpy(res, data, PixelFormatT::data_length(_resolution));
-                    return ImageData<PixelFormatT>{std::shared_ptr<uint8_t const>{res}, _resolution, _row_order};
+                    auto res = std::shared_ptr<uint8_t>{new uint8_t[PixelFormatT::data_length(_resolution)], std::default_delete<uint8_t[]>()}; // NOLINT(*c-arrays)
+                    memcpy(res.get(), data, PixelFormatT::data_length(_resolution));
+                    return ImageData<PixelFormatT>{std::move(res), _resolution, _row_order};
                 },
                 [&](std::shared_ptr<uint8_t const> const& data) {
                     return ImageData<PixelFormatT>{data, _resolution, _row_order};

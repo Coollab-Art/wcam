@@ -299,13 +299,13 @@ void CaptureImpl::process_next_image()
 
         if (_pixel_format == V4L2_PIX_FMT_YUYV)
         {
-            image->set_data(ImageDataView<YUYV>{static_cast<unsigned char*>(_buffers[buf.index].ptr), _buffers[buf.index].size, _resolution, wcam::FirstRowIs::Top});
+            image->set_data(ImageDataView<YUYV>{static_cast<unsigned char*>(_buffers[buf.index].ptr), _buffers[buf.index].size, _resolution, wcam::FirstRowIs::Top}); // NOLINT(*constant-array-index)
         }
         else if (_pixel_format == V4L2_PIX_FMT_MJPEG)
         {
-            auto* const rgb_data = new uint8_t[_resolution.pixels_count() * 3]; // NOLINT(*owning-memory)
-            mjpeg_to_rgb(_buffers[buf.index], rgb_data);
-            image->set_data(ImageDataView<RGB24>{std::shared_ptr<uint8_t>{rgb_data}, _resolution.pixels_count() * 3, _resolution, wcam::FirstRowIs::Top});
+            auto rgb_data = std::shared_ptr<uint8_t>{new uint8_t[_resolution.pixels_count() * 3], std::default_delete<uint8_t[]>()}; // NOLINT(*c-arrays)
+            mjpeg_to_rgb(_buffers[buf.index], rgb_data.get());                                                                       // NOLINT(*constant-array-index)
+            image->set_data(ImageDataView<RGB24>{std::move(rgb_data), _resolution.pixels_count() * 3, _resolution, wcam::FirstRowIs::Top});
         }
         else
         {
