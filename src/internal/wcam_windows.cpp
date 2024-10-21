@@ -403,10 +403,13 @@ STDMETHODIMP CaptureImpl::BufferCB(double /* time */, BYTE* buffer, long buffer_
     return S_OK;
 }
 
-CaptureImpl::~CaptureImpl()
+MediaControlRAII::~MediaControlRAII()
 {
-    _media_control->Stop();
-    _media_control->Release();
+    if (_media_control)
+    {
+        _media_control->Stop();
+        _media_control->Release();
+    }
 }
 
 static auto get_resolutions(IBaseFilter* capture_filter) -> std::vector<Resolution>
