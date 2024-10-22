@@ -28,6 +28,27 @@ static auto BGR24_to_RGB24(uint8_t const* bgr_data, Resolution resolution) -> st
     return rgb_data;
 }
 
+static auto RGBA24_to_RGB24(uint8_t const* rgba_data, Resolution resolution) -> std::shared_ptr<uint8_t const>
+{
+    auto       rgb_data = std::shared_ptr<uint8_t>{new uint8_t[resolution.pixels_count() * 3], std::default_delete<uint8_t[]>()}; // NOLINT(*c-arrays)
+    auto const width    = resolution.width();
+    auto const height   = resolution.height();
+
+    for (Resolution::DataType y = 0; y < height; y++)
+    {
+        for (Resolution::DataType x = 0; x < width; x++)
+        {
+            rgb_data.get()[(x + y * width) * 3 + 0] = rgba_data[(x + y * width) * 4 + 0]; // R
+            rgb_data.get()[(x + y * width) * 3 + 1] = rgba_data[(x + y * width) * 4 + 1]; // G
+            rgb_data.get()[(x + y * width) * 3 + 2] = rgba_data[(x + y * width) * 4 + 2]; // B
+            // On ignore le canal Alpha (rgba_data[(x + y * width) * 4 + 3])
+        }
+    }
+
+    return rgb_data;
+}
+
+
 static auto NV12_to_RGB24(uint8_t const* nv12Data, Resolution resolution) -> std::shared_ptr<uint8_t const>
 {
     auto       rgb_data   = std::shared_ptr<uint8_t>{new uint8_t[resolution.pixels_count() * 3], std::default_delete<uint8_t[]>()}; // NOLINT(*c-arrays)
@@ -101,6 +122,16 @@ void Image::set_data(ImageDataView<BGR24> const& bgrData)
         RGB24::data_length(bgrData.resolution()),
         bgrData.resolution(),
         bgrData.row_order()
+    });
+}
+
+void Image::set_data(ImageDataView<RGBA24> const& rgbaData)
+{
+    set_data(ImageDataView<RGB24>{
+        RGBA24_to_RGB24(rgbaData.data(), rgbaData.resolution()),
+        RGB24::data_length(rgbaData.resolution()),
+        rgbaData.resolution(),
+        rgbaData.row_order()
     });
 }
 

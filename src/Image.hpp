@@ -17,6 +17,13 @@ struct RGB24 {
     }
 };
 
+struct RGBA24 {
+    static auto data_length(Resolution resolution) -> size_t
+    {
+        return resolution.pixels_count() * 4;
+    }
+};
+
 struct BGR24 {
     static auto data_length(Resolution resolution) -> size_t
     {
@@ -119,6 +126,7 @@ public:
     auto operator=(Image&&) noexcept -> Image& = delete;
 
     virtual void set_data(ImageDataView<RGB24> const&) = 0;
+    virtual void set_data(ImageDataView<RGBA24> const&);
     virtual void set_data(ImageDataView<BGR24> const&);
     virtual void set_data(ImageDataView<NV12> const&);
     virtual void set_data(ImageDataView<YUYV> const&);

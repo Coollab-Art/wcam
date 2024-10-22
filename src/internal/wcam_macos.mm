@@ -161,10 +161,9 @@ CFDataRef imageData = CGDataProviderCopyData(dataProvider);
 
 // Access the raw bytes
 const UInt8 *rawData = CFDataGetBytePtr(imageData);
-
     auto image = image_factory().make_image();
   
-        image->set_data(ImageDataView<YUYV>{rawData, static_cast<size_t>(width*height*2), {width, height}, wcam::FirstRowIs::Top});
+    image->set_data(ImageDataView<RGBA24>{rawData, static_cast<size_t>(width*height*4), {width, height}, wcam::FirstRowIs::Top});
     // else
     // {
         // ICaptureImpl::set_image(Error_Unknown{"Unsupported pixel format"});
