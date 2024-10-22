@@ -9,6 +9,108 @@
 #include "make_device_id.hpp"
 #include <Cocoa/Cocoa.h>
 #include <wcam/wcam.hpp>
+#import <Foundation/Foundation.h>
+#import <AVFoundation/AVFoundation.h>
+
+#include "wcam_macos.hpp"
+#import <CoreImage/CoreImage.h>
+
+
+
+// C++ callback definition
+typedef void (*FrameCapturedCallback)(wcam::internal::CaptureImpl&, CGImageRef);
+
+@interface WebcamCapture : NSObject <AVCaptureVideoDataOutputSampleBufferDelegate>
+
+- (instancetype)initWithCallback:(FrameCapturedCallback)callback myptr:(wcam::internal::CaptureImpl*)ptr;
+- (void)startCapturing;
+- (void)stopCapturing;
+
+@end
+
+
+
+@implementation WebcamCapture {
+    AVCaptureSession *captureSession;
+   wcam::internal::CaptureImpl* trucptr;
+    FrameCapturedCallback callback;
+}
+
+- (instancetype)initWithCallback:(FrameCapturedCallback)frameCallback  myptr:(wcam::internal::CaptureImpl*)ptr{
+    self = [super init];
+    if (self) {
+        callback = frameCallback;
+        trucptr=ptr;
+        [self setupCaptureSession];
+    }
+    return self;
+}
+
+- (void)setupCaptureSession {
+    captureSession = [[AVCaptureSession alloc] init];
+    [captureSession beginConfiguration];
+    
+    // Setup the webcam (video input)
+    AVCaptureDevice *videoDevice = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
+    NSError *error = nil;
+    AVCaptureDeviceInput *videoInput = [AVCaptureDeviceInput deviceInputWithDevice:videoDevice error:&error];
+    
+    if ([captureSession canAddInput:videoInput]) {
+        [captureSession addInput:videoInput];
+    } else {
+        NSLog(@"Failed to add video input: %@", error);
+    }
+    
+    // Setup video output
+    AVCaptureVideoDataOutput *videoOutput = [[AVCaptureVideoDataOutput alloc] init];
+    dispatch_queue_t queue = dispatch_queue_create("VideoCaptureQueue", NULL);
+    [videoOutput setSampleBufferDelegate:self queue:queue];
+    
+    if ([captureSession canAddOutput:videoOutput]) {
+        [captureSession addOutput:videoOutput];
+    }
+    
+    [captureSession commitConfiguration];
+}
+
+- (void)startCapturing {
+    [captureSession startRunning];
+}
+
+- (void)stopCapturing {
+    [captureSession stopRunning];
+}
+
+// Delegate method to handle captured frames
+- (void)captureOutput:(AVCaptureOutput *)output
+didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
+       fromConnection:(AVCaptureConnection *)connection {
+    
+    CVPixelBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
+    if (!pixelBuffer) {
+        return;
+    }
+
+    CIImage *ciImage = [CIImage imageWithCVPixelBuffer:pixelBuffer];
+    CIContext *context = [CIContext context];
+    
+    CGImageRef cgImage = [context createCGImage:ciImage fromRect:[ciImage extent]];
+    
+    // Call the C++ callback with the captured image
+    if (callback) {
+        callback(*trucptr, cgImage);
+    }
+
+    CGImageRelease(cgImage);
+}
+
+@end
+
+
+    // C++ callback function to handle the captured image
+void frameCapturedCallback(wcam::internal::CaptureImpl& Self, CGImageRef image) {
+        Self.webcam_callback(image);
+}
 
 namespace wcam::internal {
 
@@ -44,153 +146,61 @@ auto grab_all_infos_impl() -> std::vector<Info> {
     return list_webcams_infos;
 }
 
-}
 
-@interface FrameCaptureDelegate : NSObject<AVCaptureVideoDataOutputSampleBufferDelegate>
-{
-@public
-    // std::vector<wcam::FrameInfo>* frames;
-}
-@property (nonatomic, strong) NSImageView *imageView;
-@property (nonatomic) CGSize frameSize;
-@end
+void CaptureImpl::webcam_callback(CGImageRef image){
+    
+    std::cout << "okok" << "\n";
 
-@implementation FrameCaptureDelegate
+    if (image) {
+        unsigned int width = CGImageGetWidth(image);
+unsigned int height = CGImageGetHeight(image);
 
-- (void)captureOutput:(AVCaptureOutput *)output didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection {
-    CVImageBufferRef imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
+// Get the data provider
+CGDataProviderRef dataProvider = CGImageGetDataProvider(image);
+CFDataRef imageData = CGDataProviderCopyData(dataProvider);
 
-    // Convertir l'image buffer en CIImage
-    CIImage *ciImage = [CIImage imageWithCVImageBuffer:imageBuffer];
+// Access the raw bytes
+const UInt8 *rawData = CFDataGetBytePtr(imageData);
 
-    // Convertir CIImage en NSImage
-    NSCIImageRep *imageRep = [NSCIImageRep imageRepWithCIImage:ciImage];
-    NSImage *nsImage = [[NSImage alloc] initWithSize:imageRep.size];
-    [nsImage addRepresentation:imageRep];
-
-    // Extraire les données des pixels
-    size_t bufferWidth = CVPixelBufferGetWidth(imageBuffer);
-    size_t bufferHeight = CVPixelBufferGetHeight(imageBuffer);
-    CVPixelBufferLockBaseAddress(imageBuffer, kCVPixelBufferLock_ReadOnly);
-
-    OSType pixelFormat = CVPixelBufferGetPixelFormatType(imageBuffer);
-    NSString *pixelFormatHexString = [NSString stringWithFormat:@"%08X", pixelFormat];
-    NSLog(@"Pixel format hex: %@", pixelFormatHexString);
-
-    std::vector<uint8_t> yData, cbCrData; // Vecteurs pour stocker les données Y et CbCr
-
-    if (pixelFormat == kCVPixelFormatType_422YpCbCr8) {
-        // Composante Y (Luminance)
-        uint8_t *baseAddressY = (uint8_t *)CVPixelBufferGetBaseAddress(imageBuffer);
-        size_t bytesPerRowY = CVPixelBufferGetBytesPerRow(imageBuffer);
-        size_t dataSizeY = bytesPerRowY * bufferHeight;
-        yData.assign(baseAddressY, baseAddressY + dataSizeY); // Copier les données Y dans le vecteur
-
-        // Composante CbCr (Chrominance bleue et rouge intercalées)
-        // Note : Pour le format 422, les données CbCr sont intercalées avec les données Y
-        cbCrData.reserve(dataSizeY / 2); // Réserver la taille pour les données CbCr
-        for (size_t i = 1; i < dataSizeY; i += 2) {
-            cbCrData.push_back(baseAddressY[i]); // Ajouter les données Cb ou Cr à partir des données Y
-        }
-
-        NSLog(@"Y Data size: %zu, CbCr Data size: %zu", yData.size(), cbCrData.size());
-    } else {
-        NSLog(@"Unsupported pixel format: %u", pixelFormat);
-    }
-
-    CVPixelBufferUnlockBaseAddress(imageBuffer, kCVPixelBufferLock_ReadOnly);
-
-    // Stocker les informations des frames
-    self.frameSize = CVImageBufferGetEncodedSize(imageBuffer);
-    NSInteger width = self.frameSize.width;
-    NSInteger height = self.frameSize.height;
-
-    // wcam::FrameInfo frameInfo;
-    // frameInfo.width = (int)width;
-    // frameInfo.height = (int)height;
-    // frameInfo.yData = yData; // Stocker les données Y
-    // frameInfo.cbCrData = cbCrData; // Stocker les données CbCr
-    // @synchronized(self) {
-    // frames->push_back(frameInfo);
+    auto image = image_factory().make_image();
+  
+        image->set_data(ImageDataView<YUYV>{rawData, static_cast<size_t>(width*height*2), {width, height}, wcam::FirstRowIs::Top});
+    // else
+    // {
+        // ICaptureImpl::set_image(Error_Unknown{"Unsupported pixel format"});
     // }
 
-    // Debugging: Log the size information
-    NSLog(@"Frame width: %ld, height: %ld", (long)width, (long)height);
-
-    dispatch_async(dispatch_get_main_queue(), ^{
-        self.imageView.image = nsImage;
-    });
-}
-
-@end
-
-
-
-
-
-
-//PARTIE 3 : AFFICHAGE DE LA CAMERA DANS l'APP
-
-@interface AppDelegate : NSObject <NSApplicationDelegate>
-@property (nonatomic, strong) NSWindow *window;
-@property (nonatomic, strong) FrameCaptureDelegate *frameCaptureDelegate;
-@end
-
-@implementation AppDelegate
-
-- (void)applicationDidFinishLaunching:(NSNotification *)notification {
-    self.window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 1080, 480)
-                                               styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable)
-                                                 backing:NSBackingStoreBuffered
-                                                   defer:NO];
-    [self.window setTitle:@"Webcam Capture"];
-    [self.window makeKeyAndOrderFront:nil];
-
-    NSImageView *imageView = [[NSImageView alloc] initWithFrame:self.window.contentView.bounds];
-    imageView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-    [self.window.contentView addSubview:imageView];
-
-    self.frameCaptureDelegate = [[FrameCaptureDelegate alloc] init];
-    self.frameCaptureDelegate.imageView = imageView;
-    // self.frameCaptureDelegate->frames = new std::vector<wcam::FrameInfo>;
-
-    AVCaptureSession *session = [[AVCaptureSession alloc] init];
-    AVCaptureDevice *device = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
-
-    if (!device) {
-        std::cerr << "No video device found" << std::endl;
-        [NSApp terminate:nil];
+    ICaptureImpl::set_image(std::move(image));
+    } else {
+        std::cout << "Failed to capture image" << std::endl;
     }
-
-    NSError *error = nil;
-    AVCaptureDeviceInput *input = [AVCaptureDeviceInput deviceInputWithDevice:device error:&error];
-    if (error) {
-        std::cerr << "Error opening video device: " << [[error localizedDescription] UTF8String] << std::endl;
-        [NSApp terminate:nil];
-    }
-
-    [session addInput:input];
-    
-    AVCaptureVideoDataOutput *output = [[AVCaptureVideoDataOutput alloc] init];
-    [output setSampleBufferDelegate:self.frameCaptureDelegate queue:dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0)];
-    [session addOutput:output];
-    
-    [session startRunning];
 }
+static WebcamCapture *webcamCapture;
 
-@end
-
-namespace wcam::internal {
-
-void open_webcam()
+void CaptureImpl::open_webcam()
 {
-     @autoreleasepool {
-        NSApplication *app = [NSApplication sharedApplication];
-        AppDelegate *delegate = [[AppDelegate alloc] init];
-        app.delegate = delegate;
-        [app run];
-    }
+    //  @autoreleasepool {
+        // NSApplication *app = [NSApplication sharedApplication];
+        // std::cout << "ok1" << "\n";
+        // // AppDelegate *delegate = [[AppDelegate alloc] init];
+        // // app.delegate = delegate;
+        // std::cout << "ok2" << "\n";
+        // [app run];
+        //  std::cout << "ok3" << "\n";
+        webcamCapture = [[WebcamCapture alloc] initWithCallback:frameCapturedCallback myptr:this];
+        
+        // Start capturing frames
+        [webcamCapture startCapturing];
+        
+        // std::cout << "Press Enter to stop capturing..." << std::endl;
+       // std::cin.get();
+        
+        // // Stop capturing frames
+        // [webcamCapture stopCapturing];
+    // }
+}
+
 }
 
 
-} // namespace wcam::internal
+ // namespace wcam::internal
