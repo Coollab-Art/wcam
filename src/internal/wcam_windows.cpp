@@ -39,7 +39,7 @@ static auto convert_wstr_to_str(BSTR const& wstr) -> std::string
 
 static void throw_error(HRESULT hr, std::string_view code_that_failed, nostd::source_location location = nostd::source_location::current())
 {
-    throw CaptureException{Error_Unknown{fmt::format("{}(During `{}`, at {}({}:{}))", Cool::get_system_error_hresult(hr), code_that_failed, location.file_name(), location.line(), location.column())}};
+    throw CaptureException{Error_Unknown{fmt::format("{}(During `{}`, at {}({}:{}))", Cool::get_system_error(hr), code_that_failed, location.file_name(), location.line(), location.column())}};
 }
 
 #define THROW_IF_ERR(exp) /*NOLINT(*macro*)*/ \
