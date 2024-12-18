@@ -7,6 +7,7 @@
 #include <string_view>
 #include <unordered_map>
 #include "../Info.hpp"
+#include "Cool/get_system_error_hresult.hpp"
 #include "ImageFactory.hpp"
 #include "fallback_webcam_name.hpp"
 #include "make_device_id.hpp"
@@ -36,28 +37,9 @@ static auto convert_wstr_to_str(BSTR const& wstr) -> std::string
     return res;
 }
 
-static auto hr_to_string(HRESULT hr) -> std::string
-{
-    char* error_message{nullptr};
-    FormatMessage(
-        FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-        nullptr,
-        static_cast<DWORD>(hr),
-        MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US),
-        reinterpret_cast<LPSTR>(&error_message), // NOLINT(*reinterpret-cast)
-        0,
-        nullptr
-    );
-    if (error_message == nullptr)
-        return "UNKOWN\n";
-    auto message = std::string{error_message};
-    LocalFree(error_message);
-    return message;
-}
-
 static void throw_error(HRESULT hr, std::string_view code_that_failed, nostd::source_location location = nostd::source_location::current())
 {
-    throw CaptureException{Error_Unknown{fmt::format("{}(During `{}`, at {}({}:{}))", hr_to_string(hr), code_that_failed, location.file_name(), location.line(), location.column())}};
+    throw CaptureException{Error_Unknown{fmt::format("{}(During `{}`, at {}({}:{}))", Cool::get_system_error(hr), code_that_failed, location.file_name(), location.line(), location.column())}};
 }
 
 #define THROW_IF_ERR(exp) /*NOLINT(*macro*)*/ \

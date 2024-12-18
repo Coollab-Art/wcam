@@ -6,46 +6,16 @@
 #include <linux/videodev2.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
-#include <cstring>
 #include <filesystem>
 #include <functional>
 #include <source_location/source_location.hpp>
 #include "../Info.hpp"
+#include "Cool/get_system_error.hpp"
 #include "ImageFactory.hpp"
 #include "fallback_webcam_name.hpp"
 #include "make_device_id.hpp"
 
 namespace wcam::internal {
-
-static auto errno_to_string(int errnum) -> std::string
-{
-    auto error_message = std::string(128, '\0'); // Start with a reasonable buffer size
-
-#ifdef _GNU_SOURCE
-    // GNU version of strerror_r returns a char*
-    char* const result = strerror_r(errnum, error_message.data(), error_message.size());
-    // The result may not use the provided buffer, but an internal buffer instead, so return a copy of that buffer
-    if (result != error_message.data())
-        return result;
-#else
-    // POSIX version of strerror_r returns an int and fills the buffer
-    int result;
-    while (true) // Retry until we succeed
-    {
-        result = strerror_r(errnum, error_message.data(), error_message.size());
-        if (result != ERANGE)
-            break;
-        error_message.resize(error_message.size() * 2);
-    }
-
-    if (result != 0)
-        return "Unknown error";
-#endif
-
-    // Resize the string to fit the actual message length
-    error_message.resize(std::strlen(error_message.c_str()));
-    return error_message;
-}
 
 static void throw_error(std::string const& err, std::string_view code_that_failed, nostd::source_location location = nostd::source_location::current())
 {
@@ -54,17 +24,17 @@ static void throw_error(std::string const& err, std::string_view code_that_faile
     throw CaptureException{Error_Unknown{fmt::format("{}\n(During `{}`, at {}({}:{}))", err, code_that_failed, location.file_name(), location.line(), location.column())}};
 }
 
-#define THROW_IF_ERR(exp) /*NOLINT(*macro*)*/          \
-    {                                                  \
-        int const err_code = exp;                      \
-        if (err_code == -1)                            \
-            throw_error(errno_to_string(errno), #exp); \
+#define THROW_IF_ERR(exp) /*NOLINT(*macro*)*/            \
+    {                                                    \
+        int const err_code = exp;                        \
+        if (err_code == -1)                              \
+            throw_error(Cool::get_system_error(), #exp); \
     }
 
-#define THROW_IF(exp) /*NOLINT(*macro*)*/              \
-    {                                                  \
-        if (exp)                                       \
-            throw_error(errno_to_string(errno), #exp); \
+#define THROW_IF(exp) /*NOLINT(*macro*)*/                \
+    {                                                    \
+        if (exp)                                         \
+            throw_error(Cool::get_system_error(), #exp); \
     }
 
 static auto for_each_webcam_path(std::function<void(std::filesystem::path const& webcam_path)> const& callback)

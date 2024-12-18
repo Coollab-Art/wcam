@@ -46,6 +46,10 @@ endif()
 
 target_link_libraries(wcam PRIVATE fmt::fmt)
 
+# ---get_system_error library---
+add_subdirectory(lib/get_system_error)
+target_link_libraries(wcam PRIVATE Cool::get_system_error)
+
 # ---source_location library---
 include(FetchContent)
 FetchContent_Declare(

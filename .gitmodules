@@ -1,3 +1,6 @@
 [submodule "tooling"]
 	path = tooling
 	url = https://github.com/CoolLibs/tooling
+[submodule "lib/get_system_error"]
+	path = lib/get_system_error
+	url = https://github.com/CoolLibs/get_system_error
