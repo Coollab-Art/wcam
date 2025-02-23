@@ -50,17 +50,6 @@ target_link_libraries(wcam PRIVATE fmt::fmt)
 add_subdirectory(lib/get_system_error)
 target_link_libraries(wcam PRIVATE Cool::get_system_error)
 
-# ---source_location library---
-include(FetchContent)
-FetchContent_Declare(
-    source_location
-    GIT_REPOSITORY https://github.com/paweldac/source_location
-    GIT_TAG v0.4
-    SYSTEM
-)
-FetchContent_MakeAvailable(source_location)
-target_link_libraries(wcam PRIVATE nostd::source_location)
-
 # ---Platform-specific setup---
 if(WIN32)
     target_link_libraries(wcam PRIVATE strmiids)

@@ -8,7 +8,7 @@
 #include <sys/mman.h>
 #include <filesystem>
 #include <functional>
-#include <source_location/source_location.hpp>
+#include <source_location>
 #include "../Info.hpp"
 #include "Cool/get_system_error.hpp"
 #include "ImageFactory.hpp"
@@ -17,7 +17,7 @@
 
 namespace wcam::internal {
 
-static void throw_error(std::string const& err, std::string_view code_that_failed, nostd::source_location location = nostd::source_location::current())
+static void throw_error(std::string const& err, std::string_view code_that_failed, std::source_location location = std::source_location::current())
 {
     if (errno == 16)
         throw CaptureException{Error_WebcamAlreadyUsedInAnotherApplication{}};
