@@ -8,7 +8,7 @@
 #include <sys/mman.h>
 #include <filesystem>
 #include <functional>
-#include <source_location>
+// #include <source_location>
 #include "../Info.hpp"
 #include "Cool/get_system_error.hpp"
 #include "ImageFactory.hpp"
@@ -17,11 +17,12 @@
 
 namespace wcam::internal {
 
-static void throw_error(std::string const& err, std::string_view code_that_failed, std::source_location location = std::source_location::current())
+static void throw_error(std::string const& err, std::string_view code_that_failed /*, std::source_location location = std::source_location::current()*/) // TODO(wcam) We temporarily disable source_location on Linux because when building Coollab we need to use an old version of glibc to be compatible with some distros, and we therefore don't have source_location
 {
     if (errno == 16)
         throw CaptureException{Error_WebcamAlreadyUsedInAnotherApplication{}};
-    throw CaptureException{Error_Unknown{fmt::format("{}\n(During `{}`, at {}({}:{}))", err, code_that_failed, location.file_name(), location.line(), location.column())}};
+    // throw CaptureException{Error_Unknown{fmt::format("{}\n(During `{}`, at {}({}:{}))", err, code_that_failed, location.file_name(), location.line(), location.column())}};
+    throw CaptureException{Error_Unknown{fmt::format("{}\n(During `{}`)", err, code_that_failed)}};
 }
 
 #define THROW_IF_ERR(exp) /*NOLINT(*macro*)*/            \
