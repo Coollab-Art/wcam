@@ -51,7 +51,7 @@ private:
     std::vector<Texture> _textures{};
 };
 
-auto texture_pool() -> TexturePool&
+static auto texture_pool() -> TexturePool&
 {
     static auto instance = TexturePool{};
     return instance;
@@ -188,30 +188,37 @@ private:
     quick_imgui::AverageTime          _timer{};
     std::optional<wcam::SharedWebcam> _webcam{};
     wcam::MaybeImage                  _maybe_image{};
-    wcam::KeepLibraryAlive            _keep_wcam_alive{}; // We choose to keep the library running for the whole duration of the program.
-                                                          // But in a real application you would probably want to only have the library active if you are actively using or looking to use a camera.
-                                                          // For example in OBS you would store one wcam::KeepLibraryAlive{} in each of the webcam Sources, so that the library is only active while a webcam source is in the scene, or when the window to select which webcam to use is open
-                                                          // While the library is alive, it has a thread running in the background constantly refreshing its list of infos on which webcam are plugged in, and if webcams are currently beeing used this thread also checks to restart them if they failed (eg if the webcam was already used by another application when we tried to open it)
 };
 
 auto main() -> int
 {
     wcam::set_image_type<Image>(); // Must be called before using anything from the library
+
     auto windows = std::vector<WebcamWindow>(3);
+    bool library_enabled{true};
+
     quick_imgui::loop("wcam tests", [&]() {
+        wcam::update(); // Must be called once every frame
         ImGui::Begin("wcam test");
-        if (ImGui::Button("Add"))
-            windows.emplace_back();
-        ImGui::SameLine();
-        if (ImGui::Button("Remove") && !windows.empty())
-            windows.pop_back();
+        {
+            if (ImGui::Button("Add"))
+                windows.emplace_back();
+            ImGui::SameLine();
+            if (ImGui::Button("Remove") && !windows.empty())
+                windows.pop_back();
+
+            ImGui::Checkbox("Library enabled", &library_enabled);
+        }
         ImGui::End();
 
-        for (size_t i = 0; i < windows.size(); ++i)
+        if (library_enabled)
         {
-            ImGui::Begin(std::to_string(i + 1).c_str());
-            windows[i].update();
-            ImGui::End();
+            for (size_t i = 0; i < windows.size(); ++i)
+            {
+                ImGui::Begin(std::to_string(i + 1).c_str());
+                windows[i].update();
+                ImGui::End();
+            }
         }
     });
 }
