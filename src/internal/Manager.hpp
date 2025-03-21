@@ -1,11 +1,13 @@
 #pragma once
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <unordered_map>
 #include <vector>
 #include "../Info.hpp"
 #include "../Resolution.hpp"
+#include "../ResolutionsMap.hpp"
 #include "../SharedWebcam.hpp"
 #include "WebcamRequest.hpp"
 
@@ -13,7 +15,7 @@ namespace wcam::internal {
 
 class Manager {
 public:
-    Manager();
+    Manager() = default;
     ~Manager();
     Manager(Manager const&)                        = delete;
     auto operator=(Manager const&) -> Manager&     = delete;
@@ -25,28 +27,39 @@ public:
     [[nodiscard]] auto default_resolution(DeviceId const& id) const -> Resolution;
     void               request_a_restart_of_the_capture_if_it_exists(DeviceId const& id);
 
-    void update();
+    void check_if_update_needs_to_continue();
+
+    auto selected_resolution(DeviceId const&) const -> Resolution;
+    void set_selected_resolution(DeviceId const&, Resolution);
+
+    auto get_resolutions_map() -> ResolutionsMap& { return _selected_resolutions; }
 
 private:
     auto is_plugged_in(DeviceId const& id) const -> bool;
 
+    void start_thread_ifn();
+    void stop_thread_ifn();
+
+    void        update();
     static void thread_job(Manager& self);
 
 private:
     std::vector<Info>                                          _infos{};
     std::unordered_map<DeviceId, std::weak_ptr<WebcamRequest>> _current_requests{};
 
-    mutable std::mutex _infos_mutex{};
-    mutable std::mutex _captures_mutex{};
-    std::atomic<bool>  _wants_to_stop_thread{false};
-    std::thread        _thread{}; // Must be initialized last, to make sure that everything else is init when the thread starts its job and uses those other things
+    mutable std::mutex         _infos_mutex{};
+    mutable std::mutex         _captures_mutex{};
+    std::atomic<bool>          _wants_to_stop_thread{false};
+    mutable std::atomic<bool>  _infos_have_been_requested_this_frame{false};
+    std::optional<std::thread> _thread{};
 
-#ifndef NDEBUG
-    static std::atomic<int> _managers_alive_count;
-#endif
+    ResolutionsMap _selected_resolutions{};
 };
 
-auto manager() -> std::shared_ptr<Manager>;
-auto manager_unchecked() -> std::shared_ptr<Manager>;
+inline auto manager() -> Manager&
+{
+    static auto instance = internal::Manager{};
+    return instance;
+}
 
 } // namespace wcam::internal

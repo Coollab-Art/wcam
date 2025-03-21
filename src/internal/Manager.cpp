@@ -1,32 +1,57 @@
 #include "Manager.hpp"
 #include <mutex>
 #include <variant>
-#include "ResolutionsManager.hpp"
 #include "WebcamRequest.hpp"
 
 namespace wcam::internal {
 
-#ifndef NDEBUG
-std::atomic<int> Manager::_managers_alive_count{0};
-#endif
-
-Manager::Manager()
-    : _thread{&Manager::thread_job, std::ref(*this)}
-{
-#ifndef NDEBUG
-    assert(_managers_alive_count.load() == 0);
-    _managers_alive_count.fetch_add(1);
-#endif
-}
-
 Manager::~Manager()
 {
-    _wants_to_stop_thread.store(true);
-    _thread.join();
+    stop_thread_ifn();
+}
 
-#ifndef NDEBUG
-    _managers_alive_count.fetch_add(-1);
-#endif
+void Manager::start_thread_ifn()
+{
+    if (_thread.has_value())
+        return;
+
+    _wants_to_stop_thread.store(false);
+    _thread.emplace(&Manager::thread_job, std::ref(*this));
+}
+
+void Manager::stop_thread_ifn()
+{
+    if (!_thread.has_value())
+        return;
+
+    _wants_to_stop_thread.store(true);
+    _thread->join();
+    _thread.reset();
+}
+
+void Manager::check_if_update_needs_to_continue()
+{
+    bool needs_to_update{};
+    {
+        std::scoped_lock lock{_captures_mutex};
+        for (auto it = _current_requests.begin(); it != _current_requests.end();)
+        {
+            if (it->second.expired())
+                it = _current_requests.erase(it); // Erase and move iterator to the next element
+            else
+                ++it; // Move to the next element
+        }
+
+        needs_to_update = !_current_requests.empty()
+                          || _infos_have_been_requested_this_frame.load();
+    }
+
+    if (needs_to_update)
+        start_thread_ifn();
+    else
+        stop_thread_ifn();
+
+    _infos_have_been_requested_this_frame.store(false);
 }
 
 void Manager::thread_job(Manager& self)
@@ -54,6 +79,7 @@ static auto grab_all_infos() -> std::vector<Info>
 
 auto Manager::infos() const -> std::vector<Info>
 {
+    _infos_have_been_requested_this_frame.store(true);
     std::scoped_lock lock{_infos_mutex};
     return _infos;
 }
@@ -139,7 +165,7 @@ void Manager::update()
             // Otherwise, the webcam is plugged in but the capture is not valid, so we should try to (re)create it
             try
             {
-                request->maybe_capture() = Capture{request->id(), resolutions_manager().selected_resolution(request->id())};
+                request->maybe_capture() = Capture{request->id(), selected_resolution(request->id())};
             }
             catch (CaptureException const& e)
             {
@@ -147,6 +173,24 @@ void Manager::update()
             }
         }
     }
+}
+
+auto Manager::selected_resolution(DeviceId const& id) const -> Resolution
+{
+    auto const it = _selected_resolutions.find(id);
+    if (it != _selected_resolutions.end())
+        return it->second;
+    return manager().default_resolution(id);
+}
+
+void Manager::set_selected_resolution(DeviceId const& id, Resolution resolution)
+{
+    auto const it = _selected_resolutions.find(id);
+    if (it != _selected_resolutions.end() && it->second == resolution)
+        return; // The resolution is already set, no need to do anything, and we don't need to restart the capture
+    _selected_resolutions[id] = resolution;
+
+    manager().request_a_restart_of_the_capture_if_it_exists(id);
 }
 
 } // namespace wcam::internal

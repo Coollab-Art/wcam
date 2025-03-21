@@ -4,7 +4,6 @@
 #include "../../src/FirstRowIs.hpp"
 #include "../../src/Image.hpp"
 #include "../../src/Info.hpp"
-#include "../../src/KeepLibraryAlive.hpp"
 #include "../../src/MaybeImage.hpp"
 #include "../../src/Resolution.hpp"
 #include "../../src/ResolutionsMap.hpp"
@@ -31,5 +30,8 @@ void set_image_type()
 }
 
 auto get_resolutions_map() -> ResolutionsMap&;
+
+/// Must be called once every frame
+void update();
 
 } // namespace wcam
