@@ -15,10 +15,12 @@ public:
     CaptureImpl(CaptureImpl&&) noexcept                    = delete;
     auto operator=(CaptureImpl&&) noexcept -> CaptureImpl& = delete;
 
+public:// HACK this is public only because the callback needs it
+    void webcam_callback(CGImageRef); 
+
 private:
     void open_webcam();
     void close_webcam();
-    void webcam_callback(CGImageRef);
 };
 
 } // namespace wcam::internal
