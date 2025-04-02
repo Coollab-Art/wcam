@@ -3,7 +3,6 @@
 
 namespace wcam::internal {
 
-
 CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
 {
     open_webcam();
@@ -11,6 +10,7 @@ CaptureImpl::CaptureImpl(DeviceId const& id, Resolution const& resolution)
 
 CaptureImpl::~CaptureImpl()
 {
+    close_webcam();
 }
 
 } // namespace wcam::internal

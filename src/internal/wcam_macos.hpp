@@ -1,10 +1,8 @@
 #pragma once
 #if defined(__APPLE__)
-#include "ICaptureImpl.hpp"
 #include <CoreImage/CoreImage.h>
+#include "ICaptureImpl.hpp"
 #include "wcam/wcam.hpp"
-
-
 
 namespace wcam::internal {
 
@@ -17,9 +15,10 @@ public:
     CaptureImpl(CaptureImpl&&) noexcept                    = delete;
     auto operator=(CaptureImpl&&) noexcept -> CaptureImpl& = delete;
 
-    public:
-void open_webcam();
-void webcam_callback(CGImageRef);
+private:
+    void open_webcam();
+    void close_webcam();
+    void webcam_callback(CGImageRef);
 };
 
 } // namespace wcam::internal
