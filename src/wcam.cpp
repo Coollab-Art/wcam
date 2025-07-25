@@ -23,7 +23,7 @@ void set_selected_resolution(DeviceId const& id, Resolution resolution)
     internal::manager().set_selected_resolution(id, resolution);
 }
 
-auto get_name(DeviceId const& id) -> std::string
+auto get_name(DeviceId const& id) -> std::optional<std::string>
 {
     return internal::manager().get_name(id);
 }
