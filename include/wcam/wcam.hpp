@@ -22,6 +22,8 @@ auto open_webcam(DeviceId const&) -> SharedWebcam;
 auto get_selected_resolution(DeviceId const&) -> Resolution;
 void set_selected_resolution(DeviceId const&, Resolution);
 
+auto get_name(DeviceId const&) -> std::string;
+
 template<typename ImageT>
 void set_image_type()
 {
