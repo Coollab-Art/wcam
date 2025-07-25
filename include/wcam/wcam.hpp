@@ -1,4 +1,5 @@
 #pragma once
+#include <optional>
 #include <vector>
 #include "../../src/DeviceId.hpp"
 #include "../../src/FirstRowIs.hpp"
@@ -22,7 +23,8 @@ auto open_webcam(DeviceId const&) -> SharedWebcam;
 auto get_selected_resolution(DeviceId const&) -> Resolution;
 void set_selected_resolution(DeviceId const&, Resolution);
 
-auto get_name(DeviceId const&) -> std::string;
+/// Might return nullopt if the webcam is not plugged in
+auto get_name(DeviceId const&) -> std::optional<std::string>;
 
 template<typename ImageT>
 void set_image_type()

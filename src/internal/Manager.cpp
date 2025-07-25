@@ -126,14 +126,14 @@ auto Manager::default_resolution(DeviceId const& id) const -> Resolution
     return it->resolutions[0]; // We know that resolutions are sorted from largest to smallest, and we want to select the largest one by default
 }
 
-auto Manager::get_name(DeviceId const& id) const -> std::string
+auto Manager::get_name(DeviceId const& id) const -> std::optional<std::string>
 {
     std::scoped_lock lock{_infos_mutex};
     auto const       it = std::find_if(_infos.begin(), _infos.end(), [&](Info const& info) {
         return info.id == id;
     });
     if (it == _infos.end())
-        return "UNKNOWN WEBCAM";
+        return std::nullopt;
     return it->name;
 }
 
